@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "completion-dictionary"
+version = "0.1.0"
+description = "Build static completion dictionaries and documentation backends for blink-cmp-dictionary."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["wn>=1.0.0,<2"]
+keywords = ["blink-cmp-dictionary", "blink.cmp", "cli", "dictionary", "wordnet"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Utilities",
+]
+
+[project.scripts]
+completion-dictionary = "completion_dictionary.cli:main"
+
+[tool.setuptools]
+packages = ["completion_dictionary"]
