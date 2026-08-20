@@ -199,6 +199,25 @@ def lookup_synonyms(
     return _parse_thesaurus_cached(source).get(word)
 
 
+def lookup_word(
+    word: str,
+    hunspell_path: Path | None = None,
+    thesaurus_path: Path | None = None,
+) -> tuple[bool, tuple[tuple[str, ...], ...] | None]:
+    """Report the new-backend lookup data for ``word``.
+
+    Returns ``(in_completion_dictionary, synonym_groups)``.  Completion
+    membership is determined against the Hunspell forms (``hunspell_path``,
+    defaulting to the cached source); thesaurus data comes from the MyThes
+    source (``thesaurus_path``, defaulting to the cached source).  Paths may
+    be supplied by tests to avoid downloads.
+    """
+    source = ensure_hunspell_source() if hunspell_path is None else hunspell_path
+    in_dictionary = word in parse_hunspell_dictionary(source)
+    groups = lookup_synonyms(word, thesaurus_path)
+    return in_dictionary, groups
+
+
 def render_doc(query: str) -> str:
     """Render the blink-cmp-dictionary doc for ``query`` from the thesaurus.
 

@@ -151,6 +151,48 @@ class LookupSynonymsTests(unittest.TestCase):
         self.assertIsNone(swedish.lookup_synonyms("finnsintte", FIXTURES / "th_sv_test.dat"))
 
 
+class LookupWordTests(unittest.TestCase):
+    def test_reports_completion_and_thesaurus(self) -> None:
+        in_dictionary, groups = swedish.lookup_word(
+            "överenskommelse",
+            hunspell_path=FIXTURES / "sv_test.dic",
+            thesaurus_path=FIXTURES / "th_sv_test.dat",
+        )
+
+        self.assertTrue(in_dictionary)
+        self.assertEqual(groups, (("avtal",),))
+
+    def test_reports_in_dictionary_but_no_thesaurus(self) -> None:
+        in_dictionary, groups = swedish.lookup_word(
+            "arbete",
+            hunspell_path=FIXTURES / "sv_test.dic",
+            thesaurus_path=FIXTURES / "th_sv_test.dat",
+        )
+
+        self.assertTrue(in_dictionary)
+        self.assertIsNone(groups)
+
+    def test_reports_thesaurus_but_not_in_dictionary(self) -> None:
+        in_dictionary, groups = swedish.lookup_word(
+            "betydelsefull",
+            hunspell_path=FIXTURES / "sv_test.dic",
+            thesaurus_path=FIXTURES / "th_sv_test.dat",
+        )
+
+        self.assertFalse(in_dictionary)
+        self.assertIsNotNone(groups)
+
+    def test_reports_neither_for_unknown_word(self) -> None:
+        in_dictionary, groups = swedish.lookup_word(
+            "någotutanträff",
+            hunspell_path=FIXTURES / "sv_test.dic",
+            thesaurus_path=FIXTURES / "th_sv_test.dat",
+        )
+
+        self.assertFalse(in_dictionary)
+        self.assertIsNone(groups)
+
+
 class RenderDocTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp = tempfile.TemporaryDirectory()

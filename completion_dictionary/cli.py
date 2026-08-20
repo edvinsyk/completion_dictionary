@@ -210,6 +210,20 @@ def build_dictionary(profile: Profile, output_path: Path | None) -> int:
 
 
 def run_lookup(profile: Profile, query: str) -> int:
+    if profile.name == "swedish":
+        in_dictionary, groups = swedish.lookup_word(query)
+        print(f"Profile: {profile.name}")
+        print(f"Word: {query}")
+        print(f"Completion dictionary: {'yes' if in_dictionary else 'no'}")
+        print(f"Thesaurus: {'yes' if groups else 'no'}")
+        if groups:
+            print()
+            print("Synonyms:")
+            for group in groups:
+                for synonym in group:
+                    print(f"  {synonym}")
+        return 0
+
     primary_wordnet, fallback_wordnet = ensure_wordnets(profile)
     senses = collect_senses(query, primary_wordnet, fallback_wordnet)
     if not senses:

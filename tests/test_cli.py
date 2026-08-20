@@ -80,6 +80,37 @@ class CliTests(unittest.TestCase):
         self.assertEqual(output, "betydelsefull\n")
         mock.assert_called_once_with("betydelsefull")
 
+    def test_run_lookup_dispatches_swedish_to_new_backend(self) -> None:
+        with patch.object(
+            cli.swedish,
+            "lookup_word",
+            return_value=(True, (("viktig", "väsentlig", "signifikant"),)),
+        ) as mock:
+            with patch("builtins.print") as print_mock:
+                exit_code = cli.run_lookup(cli.PROFILES["swedish"], "betydelsefull")
+
+        self.assertEqual(exit_code, 0)
+        mock.assert_called_once_with("betydelsefull")
+        printed = "".join(str(call) + "\n" for call in print_mock.call_args_list)
+        self.assertIn("Profile: swedish", printed)
+        self.assertIn("Word: betydelsefull", printed)
+        self.assertIn("Completion dictionary: yes", printed)
+        self.assertIn("Thesaurus: yes", printed)
+        self.assertIn("Synonyms:", printed)
+        self.assertIn("  viktig", printed)
+
+    def test_run_lookup_reports_no_thesaurus_for_inflected_word(self) -> None:
+        with patch.object(
+            cli.swedish, "lookup_word", return_value=(True, None)
+        ):
+            with patch("builtins.print") as print_mock:
+                exit_code = cli.run_lookup(cli.PROFILES["swedish"], "betydelsefulla")
+
+        self.assertEqual(exit_code, 0)
+        printed = "".join(str(call) + "\n" for call in print_mock.call_args_list)
+        self.assertIn("Thesaurus: no", printed)
+        self.assertNotIn("Synonyms:", printed)
+
 
 if __name__ == "__main__":
     unittest.main()
