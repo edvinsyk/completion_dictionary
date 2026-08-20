@@ -1,12 +1,14 @@
 # `completion-dictionary`
 
 `completion-dictionary` is a small CLI for building newline-delimited dictionary files and serving rich documentation for [blink-cmp-dictionary](https://github.com/Kaiser-Yang/blink-cmp-dictionary).
-It uses Wordnet data through the [wn](https://github.com/goodmami/wn) Python package.
 
-The current release supports two profiles.
+The current release supports two profiles, each backed by a different data source.
 
-- `swedish` using `omw-sv:2.0`
-- `english` using `oewn:2025+`
+- `swedish` — completion vocabulary from the [hunspell-sv](https://github.com/yeager/hunspell-sv) Swedish dictionary (including inflected forms), and synonyms from the Synlex / LibreOffice Swedish thesaurus.
+- `english` — lemma completion and WordNet documentation from the [Open English WordNet](https://en-word.net/) through the [wn](https://github.com/goodmami/wn) Python package.
+
+Third-party data is downloaded at build time, not bundled in the package. See
+[`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md) for sources, licenses, and attribution.
 
 `blink-cmp-dictionary` reads completion candidates from a plain text dictionary file.
 Its documentation hook can call an external command for richer item details.
@@ -75,17 +77,17 @@ completion-dictionary build --profile english
 
 This command will:
 
-- download the required `wn` data if needed
-- collect lemmas from the selected lexicon
-- deduplicate them exactly
-- sort them with `casefold()` for deterministic output
+- download and cache the required data for the selected profile if needed
+- collect the completion vocabulary from the profile's source
+- deduplicate it exactly
+- sort it with `casefold()` for deterministic output
 
 By default, the tool writes into a user data directory instead of the
 repo.
 
 On macOS, the default outputs are:
 
-- `~/Library/Application Support/completion-dictionary/sv-omw.dict`
+- `~/Library/Application Support/completion-dictionary/sv-hunspell.dict`
 - `~/Library/Application Support/completion-dictionary/en-oewn.dict`
 
 You can print the exact path for a profile:
@@ -108,13 +110,28 @@ completion-dictionary lookup --profile swedish säng
 completion-dictionary lookup --profile english bed
 ```
 
-This prints a learning/debug view with:
+For the `english` profile this prints a learning/debug view with:
 
 - lemma
 - part of speech
 - sibling lemmas from the same synset
 - ILI id
 - gloss
+
+For the `swedish` profile it reports whether the word is present in the
+completion dictionary (built from Hunspell forms), whether a thesaurus entry
+exists, and lists its synonyms:
+
+```text
+Profile: swedish
+Word: säng
+Completion dictionary: yes
+Thesaurus: yes
+
+Synonyms:
+  bädd
+  brits
+```
 
 ### Render documentation for Blink
 
@@ -125,6 +142,16 @@ completion-dictionary doc --profile english bed
 
 This prints the text that `blink-cmp-dictionary` should show in the documentation window.
 If no match exists, it prints nothing and exits successfully.
+
+For the `swedish` profile the doc shows the headword followed by a `Synonymer`
+(synonyms) block:
+
+```text
+säng
+
+Synonymer
+bädd, brits
+```
 
 ## blink.cmp configuration
 
@@ -139,14 +166,14 @@ Then point `blink-cmp-dictionary` at the generated files and override the docume
 
 On macOS, the default dictionary paths are:
 
-- `~/Library/Application Support/completion-dictionary/sv-omw.dict`
+- `~/Library/Application Support/completion-dictionary/sv-hunspell.dict`
 - `~/Library/Application Support/completion-dictionary/en-oewn.dict`
 
 Example Blink config:
 
 ```lua
 local completion_dictionary = vim.fn.expand("~/.local/bin/completion-dictionary")
-local swedish_dict = vim.fn.expand("~/Library/Application Support/completion-dictionary/sv-omw.dict")
+local swedish_dict = vim.fn.expand("~/Library/Application Support/completion-dictionary/sv-hunspell.dict")
 local english_dict = vim.fn.expand("~/Library/Application Support/completion-dictionary/en-oewn.dict")
 
 local function dictionary_file_for_context()
@@ -217,4 +244,5 @@ If your `uv tool dir --bin` output is not `~/.local/bin`, update `completion_dic
 - Completion candidates come from the static `.dict` files, not from Python at typing time.
 - Python is only used for `lookup` and `doc`, so candidate lookup stays fast.
 - Generated dictionaries are not intended to be committed to the repository or shipped in the Python package.
-- V1 is lemma-only on purpose. It does not try to generate inflected forms.
+- The `english` profile is lemma-only: each line is a single WordNet lemma with no inflected forms. The `swedish` profile is not lemma-only — it is built from Hunspell expanded forms, so inflected forms are included as completion candidates.
+- Third-party source data is downloaded at build time and cached under the user data directory. See [`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md).
