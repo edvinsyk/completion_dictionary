@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from completion_dictionary import swedish
 
@@ -40,6 +43,101 @@ class ParseHunspellDictionaryTests(unittest.TestCase):
         words = swedish.parse_hunspell_dictionary(FIXTURES / "sv_test.dic")
 
         self.assertIn("överenskommelse", words)
+
+
+class EnsureDownloadTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temp.cleanup)
+        self._data = Path(self._temp.name)
+        env = {"XDG_DATA_HOME": str(self._data)}
+        self._data_patch = patch.dict("os.environ", env, clear=True)
+        self._data_patch.start()
+        self.addCleanup(self._data_patch.stop)
+
+    def _source_dir(self, name: str) -> Path:
+        return self._data / "completion-dictionary" / "sources" / name
+
+    def test_downloads_hunspell_source_to_cached_location(self) -> None:
+        payload = b"arbete\narbetar\n"
+
+        class FakeResponse:
+            def __init__(self, body: bytes) -> None:
+                self._body = body
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return self._body
+
+        destination = self._source_dir("hunspell-sv") / "sv_SE_expanded.dic"
+        self.assertFalse(destination.exists())
+
+        with patch(
+            "completion_dictionary.swedish.urlopen",
+            return_value=FakeResponse(payload),
+        ) as urlopen:
+            result = swedish.ensure_hunspell_source()
+
+        self.assertEqual(result, destination)
+        self.assertEqual(destination.read_bytes(), payload)
+        urlopen.assert_called_once_with(swedish.SWEDISH_HUNSPELL_URL)
+        # Atomic write leaves no temporary file behind.
+        self.assertFalse(destination.with_suffix(destination.suffix + ".tmp").exists())
+
+    def test_skips_download_when_destination_already_exists(self) -> None:
+        destination = self._source_dir("mythes-sv") / "th_sv_SE.dat"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"cached")
+
+        with patch("completion_dictionary.swedish.urlopen") as urlopen:
+            result = swedish.ensure_thesaurus_source()
+
+        self.assertEqual(result, destination)
+        self.assertEqual(destination.read_bytes(), b"cached")
+        urlopen.assert_not_called()
+
+    def test_exposes_pinned_source_constants(self) -> None:
+        self.assertTrue(swedish.SWEDISH_HUNSPELL_URL.endswith("sv_SE_expanded.dic"))
+        self.assertTrue(swedish.MYTHES_URL.endswith("th_sv_SE.dat"))
+
+
+class BuildDictionaryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temp.cleanup)
+        self._data = Path(self._temp.name)
+        env = {"XDG_DATA_HOME": str(self._data)}
+        self._data_patch = patch.dict("os.environ", env, clear=True)
+        self._data_patch.start()
+        self.addCleanup(self._data_patch.stop)
+
+    def _source_dir(self) -> Path:
+        return self._data / "completion-dictionary" / "sources" / "hunspell-sv"
+
+    def test_build_writes_sorted_casefolded_forms(self) -> None:
+        # Pre-seed the cached source so no download is needed.
+        source = self._source_dir() / "sv_SE_expanded.dic"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(
+            "4\narbetat\nBeta\nbeta\növerenskommelse\n",
+            encoding="utf-8",
+        )
+
+        output_path = Path(self._temp.name) / "sv-hunspell.dict"
+        with patch("completion_dictionary.swedish.urlopen") as urlopen:
+            exit_code = swedish.build_dictionary(output_path)
+
+        self.assertEqual(exit_code, 0)
+        urlopen.assert_not_called()
+        self.assertEqual(
+            output_path.read_text(encoding="utf-8"),
+            "arbetat\nBeta\nbeta\növerenskommelse\n",
+        )
 
 
 if __name__ == "__main__":

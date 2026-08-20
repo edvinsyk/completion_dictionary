@@ -14,6 +14,8 @@ except ImportError:  # pragma: no cover - exercised in the CLI
     wn = None
     wn_ili = None
 
+from completion_dictionary import swedish
+
 
 CILI_SPEC = "cili:1.0"
 POS_NAMES = {
@@ -57,7 +59,7 @@ PROFILES = {
         name="swedish",
         primary_spec="omw-sv:2.0",
         fallback_spec="omw-en:2.0",
-        default_output_name="sv-omw.dict",
+        default_output_name="sv-hunspell.dict",
         doc_language="English",
     ),
     "english": Profile(
@@ -191,6 +193,8 @@ def format_pos(pos: str) -> str:
 
 
 def build_dictionary(profile: Profile, output_path: Path | None) -> int:
+    if profile.name == "swedish":
+        return swedish.build_dictionary(output_path or profile.default_output)
     primary_wordnet, _ = ensure_wordnets(profile)
     actual_output = output_path or profile.default_output
     lemmas = {
