@@ -18,6 +18,7 @@ from completion_dictionary import swedish
 
 
 CILI_SPEC = "cili:1.0"
+ENGLISH_WORDNET_SPEC = "oewn:2025+"
 POS_NAMES = {
     "n": "noun",
     "v": "verb",
@@ -44,10 +45,8 @@ def data_root() -> Path:
 @dataclass(frozen=True)
 class Profile:
     name: str
-    primary_spec: str
-    fallback_spec: str | None
+    backend: str
     default_output_name: str
-    doc_language: str
 
     @property
     def default_output(self) -> Path:
@@ -57,17 +56,13 @@ class Profile:
 PROFILES = {
     "swedish": Profile(
         name="swedish",
-        primary_spec="omw-sv:2.0",
-        fallback_spec="omw-en:2.0",
+        backend="swedish",
         default_output_name="sv-hunspell.dict",
-        doc_language="English",
     ),
     "english": Profile(
         name="english",
-        primary_spec="oewn:2025+",
-        fallback_spec=None,
+        backend="wordnet",
         default_output_name="en-oewn.dict",
-        doc_language="English",
     ),
 }
 
@@ -115,18 +110,10 @@ def load_profile(name: str) -> Profile:
         raise SystemExit(fail(f"Unknown profile: {name}")) from exc
 
 
-def ensure_wordnets(profile: Profile) -> tuple[Any, Any | None]:
+def ensure_wordnet() -> Any:
     require_wn()
-    ensure_package(profile.primary_spec)
-    primary = wn.Wordnet(profile.primary_spec, expand="")
-
-    fallback = None
-    if profile.fallback_spec:
-        ensure_package(profile.fallback_spec)
-        fallback = wn.Wordnet(profile.fallback_spec, expand="")
-        ensure_package(CILI_SPEC)
-
-    return primary, fallback
+    ensure_package(ENGLISH_WORDNET_SPEC)
+    return wn.Wordnet(ENGLISH_WORDNET_SPEC, expand="")
 
 
 def lookup_words(wordnet: Any, query: str) -> list[Any]:
@@ -193,9 +180,9 @@ def format_pos(pos: str) -> str:
 
 
 def build_dictionary(profile: Profile, output_path: Path | None) -> int:
-    if profile.name == "swedish":
+    if profile.backend == "swedish":
         return swedish.build_dictionary(output_path or profile.default_output)
-    primary_wordnet, _ = ensure_wordnets(profile)
+    primary_wordnet = ensure_wordnet()
     actual_output = output_path or profile.default_output
     lemmas = {
         word.lemma().strip()
@@ -210,7 +197,7 @@ def build_dictionary(profile: Profile, output_path: Path | None) -> int:
 
 
 def run_lookup(profile: Profile, query: str) -> int:
-    if profile.name == "swedish":
+    if profile.backend == "swedish":
         in_dictionary, groups = swedish.lookup_word(query)
         print(f"Profile: {profile.name}")
         print(f"Word: {query}")
@@ -224,8 +211,8 @@ def run_lookup(profile: Profile, query: str) -> int:
                     print(f"  {synonym}")
         return 0
 
-    primary_wordnet, fallback_wordnet = ensure_wordnets(profile)
-    senses = collect_senses(query, primary_wordnet, fallback_wordnet)
+    primary_wordnet = ensure_wordnet()
+    senses = collect_senses(query, primary_wordnet, None)
     if not senses:
         return 0
 
@@ -239,16 +226,16 @@ def run_lookup(profile: Profile, query: str) -> int:
         print(f"  Part of speech: {format_pos(sense.pos)}")
         print(f"  Synonyms: {', '.join(sense.sibling_lemmas)}")
         print(f"  ILI: {sense.ili_id or 'n/a'}")
-        print(f"  {profile.doc_language} gloss: {sense.gloss or 'n/a'}")
+        print(f"  English gloss: {sense.gloss or 'n/a'}")
     return 0
 
 
 def render_doc(profile: Profile, query: str) -> str:
-    if profile.name == "swedish":
+    if profile.backend == "swedish":
         return swedish.render_doc(query)
 
-    primary_wordnet, fallback_wordnet = ensure_wordnets(profile)
-    senses = collect_senses(query, primary_wordnet, fallback_wordnet)
+    primary_wordnet = ensure_wordnet()
+    senses = collect_senses(query, primary_wordnet, None)
     if not senses:
         return ""
 
@@ -259,9 +246,9 @@ def render_doc(profile: Profile, query: str) -> str:
         lines.append(f"Synonyms: {', '.join(sense.sibling_lemmas)}")
         lines.append(f"ILI: {sense.ili_id or 'n/a'}")
         if sense.gloss:
-            lines.append(f"{profile.doc_language} gloss: {sense.gloss}")
+            lines.append(f"English gloss: {sense.gloss}")
         else:
-            lines.append(f"{profile.doc_language} gloss: unavailable")
+            lines.append(f"English gloss: unavailable")
     return "\n".join(lines)
 
 

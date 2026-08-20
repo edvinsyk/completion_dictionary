@@ -44,7 +44,7 @@ class CliTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "en.dict"
-            with patch.object(cli, "ensure_wordnets", return_value=(fake_wordnet, None)):
+            with patch.object(cli, "ensure_wordnet", return_value=fake_wordnet):
                 exit_code = cli.build_dictionary(profile, output_path)
 
             self.assertEqual(exit_code, 0)
@@ -61,7 +61,7 @@ class CliTests(unittest.TestCase):
             cli.SenseSummary("bed", "r", ("bed",), "i4", "fourth"),
         ]
 
-        with patch.object(cli, "ensure_wordnets", return_value=("primary", None)):
+        with patch.object(cli, "ensure_wordnet", return_value="primary"):
             with patch.object(cli, "collect_senses", return_value=senses):
                 output = cli.render_doc(cli.PROFILES["english"], "bed")
 
