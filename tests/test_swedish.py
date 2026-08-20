@@ -106,6 +106,51 @@ class EnsureDownloadTests(unittest.TestCase):
         self.assertTrue(swedish.MYTHES_URL.endswith("th_sv_SE.dat"))
 
 
+class ParseThesaurusTests(unittest.TestCase):
+    def test_finds_exact_word(self) -> None:
+        thesaurus = swedish.parse_thesaurus(FIXTURES / "th_sv_test.dat")
+
+        self.assertIn("betydelsefull", thesaurus)
+        self.assertEqual(
+            thesaurus["betydelsefull"],
+            (("mäktig", "inflytelserik", "viktigt", "signifikant", "väsentlig", "viktig", "betydande"),),
+        )
+
+    def test_handles_swedish_characters(self) -> None:
+        thesaurus = swedish.parse_thesaurus(FIXTURES / "th_sv_test.dat")
+
+        self.assertIn("hälsa", thesaurus)
+        self.assertEqual(thesaurus["hälsa"], (("hälsning", "hälsande"),))
+        self.assertIn("överenskommelse", thesaurus)
+        self.assertEqual(thesaurus["överenskommelse"], (("avtal",),))
+
+    def test_preserves_synonym_groups(self) -> None:
+        thesaurus = swedish.parse_thesaurus(FIXTURES / "th_sv_test.dat")
+
+        self.assertEqual(
+            thesaurus["flitig"],
+            (("ivrig", "ambitiös"), ("arbetsam", "strävsam")),
+        )
+
+    def test_unknown_word_absent(self) -> None:
+        thesaurus = swedish.parse_thesaurus(FIXTURES / "th_sv_test.dat")
+
+        self.assertNotIn("finnsintte", thesaurus)
+
+
+class LookupSynonymsTests(unittest.TestCase):
+    def test_returns_groups_for_exact_word(self) -> None:
+        groups = swedish.lookup_synonyms("betydelsefull", FIXTURES / "th_sv_test.dat")
+
+        self.assertEqual(
+            groups,
+            (("mäktig", "inflytelserik", "viktigt", "signifikant", "väsentlig", "viktig", "betydande"),),
+        )
+
+    def test_returns_none_for_unknown_word(self) -> None:
+        self.assertIsNone(swedish.lookup_synonyms("finnsintte", FIXTURES / "th_sv_test.dat"))
+
+
 class BuildDictionaryTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp = tempfile.TemporaryDirectory()
