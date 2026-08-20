@@ -197,3 +197,25 @@ def lookup_synonyms(
     """
     source = ensure_thesaurus_source() if path is None else path
     return _parse_thesaurus_cached(source).get(word)
+
+
+def render_doc(query: str) -> str:
+    """Render the blink-cmp-dictionary doc for ``query`` from the thesaurus.
+
+    Returns the headword followed by a ``Synonymer`` block.  When a word has
+    a single synonym group its members are joined on one line; multiple
+    groups are numbered (``1.``, ``2.``, ...).  Returns ``""`` when there is
+    no thesaurus entry for ``query`` (e.g. an inflected form with no direct
+    headword), which the CLI treats as exit 0 with no output.
+    """
+    groups = lookup_synonyms(query)
+    if groups is None:
+        return ""
+
+    lines = [query, "", "Synonymer"]
+    if len(groups) == 1:
+        lines.append(", ".join(groups[0]))
+    else:
+        for index, group in enumerate(groups, start=1):
+            lines.append(f"{index}. {', '.join(group)}")
+    return "\n".join(lines)

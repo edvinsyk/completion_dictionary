@@ -71,5 +71,15 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("Sense 4", output)
 
 
+    def test_render_doc_dispatches_swedish_to_thesaurus(self) -> None:
+        with patch.object(
+            cli.swedish, "render_doc", return_value="betydelsefull\n"
+        ) as mock:
+            output = cli.render_doc(cli.PROFILES["swedish"], "betydelsefull")
+
+        self.assertEqual(output, "betydelsefull\n")
+        mock.assert_called_once_with("betydelsefull")
+
+
 if __name__ == "__main__":
     unittest.main()

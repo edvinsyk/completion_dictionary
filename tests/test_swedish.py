@@ -151,6 +151,47 @@ class LookupSynonymsTests(unittest.TestCase):
         self.assertIsNone(swedish.lookup_synonyms("finnsintte", FIXTURES / "th_sv_test.dat"))
 
 
+class RenderDocTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temp.cleanup)
+        self._data = Path(self._temp.name)
+        env = {"XDG_DATA_HOME": str(self._data)}
+        self._data_patch = patch.dict("os.environ", env, clear=True)
+        self._data_patch.start()
+        self.addCleanup(self._data_patch.stop)
+
+        # Seed the cached thesaurus source so render_doc does not download.
+        source = (
+            self._data
+            / "completion-dictionary"
+            / "sources"
+            / "mythes-sv"
+            / "th_sv_SE.dat"
+        )
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes((FIXTURES / "th_sv_test.dat").read_bytes())
+
+    def test_renders_synonyms_for_single_group(self) -> None:
+        output = swedish.render_doc("betydelsefull")
+
+        self.assertIn("Synonymer", output)
+        self.assertIn("viktig", output)
+        # No English gloss / ILI / Sense metadata leaks through.
+        self.assertNotIn("gloss", output)
+        self.assertNotIn("ILI", output)
+        self.assertNotIn("Sense", output)
+
+    def test_numbers_multiple_synonym_groups(self) -> None:
+        output = swedish.render_doc("flitig")
+
+        self.assertIn("1. ivrig, ambitiös", output)
+        self.assertIn("2. arbetsam, strävsam", output)
+
+    def test_returns_empty_string_for_unknown_word(self) -> None:
+        self.assertEqual(swedish.render_doc("någotutanträff"), "")
+
+
 class BuildDictionaryTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp = tempfile.TemporaryDirectory()

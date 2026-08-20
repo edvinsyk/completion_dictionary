@@ -230,6 +230,9 @@ def run_lookup(profile: Profile, query: str) -> int:
 
 
 def render_doc(profile: Profile, query: str) -> str:
+    if profile.name == "swedish":
+        return swedish.render_doc(query)
+
     primary_wordnet, fallback_wordnet = ensure_wordnets(profile)
     senses = collect_senses(query, primary_wordnet, fallback_wordnet)
     if not senses:
