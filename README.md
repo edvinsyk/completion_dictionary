@@ -142,6 +142,7 @@ completion-dictionary doc --profile english bed
 
 This prints the text that `blink-cmp-dictionary` shows in the documentation window.
 If no match exists, it prints nothing and exits successfully.
+Read errors in `doc`, `lookup`, and `synonyms` print an error to stderr and exit with status 1.
 
 For the `swedish` profile the doc shows the headword followed by a `Synonymer`
 (synonyms) block:

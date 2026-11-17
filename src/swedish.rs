@@ -353,9 +353,17 @@ fn index_lemmas<'a>(text: &'a str, form: &str) -> Vec<&'a str> {
 /// (`viktiga`) to its base word (`viktig`). A form with several base words
 /// (`tomten`: `tomt` and `tomte`) returns the groups of all of them. Nothing
 /// is downloaded: a missing thesaurus returns `None` and a missing index is
-/// skipped.
-pub fn lookup_synonyms(word: &str, thesaurus: &Path, lemma_index: Option<&Path>) -> Option<Groups> {
-    let text = format!("\n{}", read_thesaurus_text(thesaurus).ok()?);
+/// skipped. Other read errors are returned to the caller.
+pub fn lookup_synonyms(
+    word: &str,
+    thesaurus: &Path,
+    lemma_index: Option<&Path>,
+) -> io::Result<Option<Groups>> {
+    let text = match read_thesaurus_text(thesaurus) {
+        Ok(text) => format!("\n{text}"),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
     let lower = word.to_lowercase();
     let candidates = if lower == word {
         vec![word]
@@ -364,11 +372,18 @@ pub fn lookup_synonyms(word: &str, thesaurus: &Path, lemma_index: Option<&Path>)
     };
     for candidate in &candidates {
         if let Some(groups) = thesaurus_entry(&text, candidate) {
-            return Some(groups);
+            return Ok(Some(groups));
         }
     }
 
-    let index = format!("\n{}", fs::read_to_string(lemma_index?).ok()?);
+    let Some(lemma_index) = lemma_index else {
+        return Ok(None);
+    };
+    let index = match fs::read_to_string(lemma_index) {
+        Ok(text) => format!("\n{text}"),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
     let mut groups: Groups = Vec::new();
     for candidate in &candidates {
         for lemma in index_lemmas(&index, candidate) {
@@ -379,32 +394,38 @@ pub fn lookup_synonyms(word: &str, thesaurus: &Path, lemma_index: Option<&Path>)
             }
         }
     }
-    (!groups.is_empty()).then_some(groups)
+    Ok((!groups.is_empty()).then_some(groups))
 }
 
 /// Return `(in completion dictionary, synonym groups)` for `word`.
 ///
 /// Membership is checked against the built dictionary, which merges Hunspell
-/// and SALDO forms; it is `false` before a build.
+/// and SALDO forms; it is `false` before a build. Other read errors are returned.
 pub fn lookup_word(
     word: &str,
     dictionary: &Path,
     thesaurus: &Path,
     lemma_index: Option<&Path>,
-) -> (bool, Option<Groups>) {
-    let in_dictionary = fs::read_to_string(dictionary)
-        .is_ok_and(|text| format!("\n{text}").contains(&format!("\n{word}\n")));
-    (in_dictionary, lookup_synonyms(word, thesaurus, lemma_index))
+) -> io::Result<(bool, Option<Groups>)> {
+    let in_dictionary = match fs::read_to_string(dictionary) {
+        Ok(text) => format!("\n{text}").contains(&format!("\n{word}\n")),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error),
+    };
+    Ok((
+        in_dictionary,
+        lookup_synonyms(word, thesaurus, lemma_index)?,
+    ))
 }
 
 /// Render the blink-cmp-dictionary doc for `query` from the thesaurus.
 ///
 /// A single synonym group is joined on one line; multiple groups are numbered.
-/// Returns `""` when there is no thesaurus entry.
-pub fn render_doc(query: &str) -> String {
+/// Returns `""` when there is no thesaurus entry and propagates read errors.
+pub fn render_doc(query: &str) -> io::Result<String> {
     let index = lemma_index_path();
-    let Some(groups) = lookup_synonyms(query, &thesaurus_source_path(), Some(&index)) else {
-        return String::new();
+    let Some(groups) = lookup_synonyms(query, &thesaurus_source_path(), Some(&index))? else {
+        return Ok(String::new());
     };
     let mut lines = vec![query.to_string(), String::new(), "Synonymer".to_string()];
     if groups.len() == 1 {
@@ -414,5 +435,5 @@ pub fn render_doc(query: &str) -> String {
             lines.push(format!("{}. {}", index + 1, group.join(", ")));
         }
     }
-    lines.join("\n")
+    Ok(lines.join("\n"))
 }

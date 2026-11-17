@@ -296,3 +296,34 @@ pub fn lookup(index: &Path, query: &str) -> io::Result<Vec<Sense>> {
     }
     Ok(senses)
 }
+
+pub(crate) fn format_pos(pos: &str) -> &str {
+    match pos {
+        "n" => "noun",
+        "v" => "verb",
+        "a" => "adjective",
+        "s" => "adjective satellite",
+        "r" => "adverb",
+        other => other,
+    }
+}
+
+/// Render the blink-cmp-dictionary documentation for `query`.
+pub fn render_doc(query: &str) -> io::Result<String> {
+    let senses = lookup(&index_path(), query)?;
+    if senses.is_empty() {
+        return Ok(String::new());
+    }
+    let mut lines = vec![query.to_string()];
+    for (index, sense) in senses.iter().take(3).enumerate() {
+        lines.push(String::new());
+        lines.push(format!("Sense {} [{}]", index + 1, format_pos(&sense.pos)));
+        lines.push(format!("Synonyms: {}", sense.siblings.join(", ")));
+        lines.push(format!("ILI: {}", sense.ili.as_deref().unwrap_or("n/a")));
+        lines.push(format!(
+            "English gloss: {}",
+            sense.gloss.as_deref().unwrap_or("unavailable")
+        ));
+    }
+    Ok(lines.join("\n"))
+}

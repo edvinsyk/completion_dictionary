@@ -72,14 +72,14 @@ fn decodes_declared_latin1_and_strips_bom() {
     let latin1 = directory.path().join("latin1.dat");
     fs::write(&latin1, b"ISO8859-1\nh\xe4lsa|1\n|h\xe4lsning\n").unwrap();
     assert_eq!(
-        lookup_synonyms("hälsa", &latin1, None),
+        lookup_synonyms("hälsa", &latin1, None).unwrap(),
         Some(groups(&[&["hälsning"]]))
     );
 
     let bom = directory.path().join("bom.dat");
     fs::write(&bom, "\u{feff}UTF-8\r\nhälsa|1\r\n|hälsning\r\n").unwrap();
     assert_eq!(
-        lookup_synonyms("hälsa", &bom, None),
+        lookup_synonyms("hälsa", &bom, None).unwrap(),
         Some(groups(&[&["hälsning"]]))
     );
 }
@@ -87,28 +87,34 @@ fn decodes_declared_latin1_and_strips_bom() {
 #[test]
 fn lookup_returns_groups_for_exact_word() {
     assert_eq!(
-        lookup_synonyms("betydelsefull", &thesaurus(), None),
+        lookup_synonyms("betydelsefull", &thesaurus(), None).unwrap(),
         Some(groups(&[BETYDELSEFULL]))
     );
-    assert_eq!(lookup_synonyms("finnsintte", &thesaurus(), None), None);
+    assert_eq!(
+        lookup_synonyms("finnsintte", &thesaurus(), None).unwrap(),
+        None
+    );
 }
 
 #[test]
 fn lookup_matches_full_parser_for_every_headword() {
     for (word, expected) in parse_thesaurus(&thesaurus()).unwrap() {
-        assert_eq!(lookup_synonyms(&word, &thesaurus(), None), Some(expected));
+        assert_eq!(
+            lookup_synonyms(&word, &thesaurus(), None).unwrap(),
+            Some(expected)
+        );
     }
 }
 
 #[test]
 fn prefix_of_headword_is_not_a_match() {
-    assert_eq!(lookup_synonyms("flit", &thesaurus(), None), None);
+    assert_eq!(lookup_synonyms("flit", &thesaurus(), None).unwrap(), None);
 }
 
 #[test]
 fn falls_back_to_lowercase() {
     assert_eq!(
-        lookup_synonyms("Hälsa", &thesaurus(), None),
+        lookup_synonyms("Hälsa", &thesaurus(), None).unwrap(),
         Some(groups(&[&["hälsning", "hälsande"]]))
     );
 }
@@ -152,23 +158,29 @@ fn completion_list_merges_saldo_forms() {
 fn inflected_form_finds_base_word_synonyms() {
     let (_directory, _, index) = built();
     assert_eq!(
-        lookup_synonyms("Flitiga", &thesaurus(), Some(&index)),
+        lookup_synonyms("Flitiga", &thesaurus(), Some(&index)).unwrap(),
         Some(groups(&[&["ivrig", "ambitiös"], &["arbetsam", "strävsam"]]))
     );
-    assert_eq!(lookup_synonyms("arbetet", &thesaurus(), Some(&index)), None);
+    assert_eq!(
+        lookup_synonyms("arbetet", &thesaurus(), Some(&index)).unwrap(),
+        None
+    );
 }
 
 #[test]
 fn missing_index_is_skipped() {
     let (_directory, _, index) = built();
     fs::remove_file(&index).unwrap();
-    assert_eq!(lookup_synonyms("flitiga", &thesaurus(), Some(&index)), None);
+    assert_eq!(
+        lookup_synonyms("flitiga", &thesaurus(), Some(&index)).unwrap(),
+        None
+    );
 }
 
 #[test]
 fn lookup_word_reports_dictionary_and_thesaurus() {
     let dictionary = fixture("sv_test.dict");
-    let lookup = |word| lookup_word(word, &dictionary, &thesaurus(), None);
+    let lookup = |word| lookup_word(word, &dictionary, &thesaurus(), None).unwrap();
     assert_eq!(
         lookup("överenskommelse"),
         (true, Some(groups(&[&["avtal"]])))
@@ -181,7 +193,11 @@ fn lookup_word_reports_dictionary_and_thesaurus() {
     // "viktiga" comes from SALDO, so only the built dictionary has it.
     assert!(lookup("viktiga").0);
     assert_eq!(lookup("någotutanträff"), (false, None));
-    assert!(!lookup_word("arbete", &fixture("missing.dict"), &thesaurus(), None).0);
+    assert!(
+        !lookup_word("arbete", &fixture("missing.dict"), &thesaurus(), None)
+            .unwrap()
+            .0
+    );
 }
 
 #[test]

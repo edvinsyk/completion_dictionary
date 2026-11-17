@@ -118,3 +118,46 @@ fn swedish_synonyms_drop_query_and_empty_groups_unescaped() {
     let (_, stdout, _) = directory.run(&["synonyms", "x"]);
     assert_eq!(stdout, "[]\n");
 }
+
+#[test]
+fn damaged_lookup_data_reports_errors() {
+    for (profile, relative, bytes, query) in [
+        ("english", "en-oewn.tsv", b"bed\t\xff\n".as_slice(), "bed"),
+        ("swedish", "sv-lemmas.tsv", b"\xff".as_slice(), "flitiga"),
+    ] {
+        let directory = TempDir::new();
+        directory.seed_swedish();
+        directory.write(relative, bytes);
+        for command in ["lookup", "doc", "synonyms"] {
+            let (code, stdout, stderr) = directory.run(&[command, "--profile", profile, query]);
+            assert_eq!(code, 1, "{command} {profile}");
+            assert!(stdout.is_empty(), "{stdout}");
+            assert!(!stderr.is_empty(), "{command} {profile}");
+        }
+    }
+}
+
+#[test]
+fn unreadable_swedish_sources_report_errors() {
+    for relative in ["sources/mythes-sv/th_sv_SE.dat", "sv-lemmas.tsv"] {
+        let directory = TempDir::new();
+        directory.seed_swedish();
+        let path = directory.data().join(relative);
+        if path.exists() {
+            std::fs::remove_file(&path).unwrap();
+        }
+        std::fs::create_dir(&path).unwrap();
+        for command in ["lookup", "doc", "synonyms"] {
+            let (code, stdout, stderr) = directory.run(&[command, "flitiga"]);
+            assert_eq!(code, 1, "{command} {relative}");
+            assert!(stdout.is_empty(), "{stdout}");
+            assert!(!stderr.is_empty(), "{command} {relative}");
+        }
+    }
+    let directory = TempDir::new();
+    directory.write("sv-hunspell.dict", b"\xff");
+    let (code, stdout, stderr) = directory.run(&["lookup", "arbete"]);
+    assert_eq!(code, 1);
+    assert!(stdout.is_empty());
+    assert!(!stderr.is_empty());
+}
