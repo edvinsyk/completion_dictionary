@@ -92,10 +92,11 @@ def parse_hunspell_dictionary(path: Path) -> set[str]:
 def build_dictionary(output_path: Path) -> int:
     """Build the Swedish completion dictionary from the Hunspell source.
 
-    Downloads/caches the sources if needed (the thesaurus too, so later
-    ``doc`` calls never download from inside the editor), parses it into unique word forms,
-    sorts them deterministically by ``(casefold, word)``, and writes a
-    newline-delimited UTF-8 file.  Returns ``0`` on success.
+    Downloads/caches the Hunspell source if needed, parses it into unique
+    word forms, sorts them deterministically by ``(casefold, word)``, and
+    writes a newline-delimited UTF-8 file.  Also caches the thesaurus, so
+    later ``doc`` calls never download from inside the editor.  Returns
+    ``0`` on success.
     """
     source = ensure_hunspell_source()
     ensure_thesaurus_source()
