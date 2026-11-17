@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -252,6 +253,35 @@ def render_doc(profile: Profile, query: str) -> str:
     return "\n".join(lines)
 
 
+def synonym_groups(profile: Profile, query: str) -> list[dict[str, Any]]:
+    """Return synonym groups for ``query``, without the query itself.
+
+    Each group is ``{"words": [...], "pos": str | None, "gloss": str | None}``.
+    Swedish groups have no part of speech or gloss.  Groups left with no
+    words are dropped.
+    """
+    if profile.backend == "swedish":
+        groups = [
+            {"words": list(group), "pos": None, "gloss": None}
+            for group in swedish.lookup_synonyms(query) or ()
+        ]
+    else:
+        groups = [
+            {
+                "words": list(sense.sibling_lemmas),
+                "pos": format_pos(sense.pos),
+                "gloss": sense.gloss,
+            }
+            for sense in collect_senses(query, ensure_wordnet(), None)
+        ]
+
+    for group in groups:
+        group["words"] = [
+            word for word in group["words"] if word.casefold() != query.casefold()
+        ]
+    return [group for group in groups if group["words"]]
+
+
 def print_path(profile: Profile, output_path: Path | None) -> int:
     print(output_path or profile.default_output)
     return 0
@@ -310,6 +340,13 @@ def build_parser() -> argparse.ArgumentParser:
     add_profile_argument(doc_parser)
     doc_parser.add_argument("word", help="The lemma to document.")
 
+    synonyms_parser = subparsers.add_parser(
+        "synonyms",
+        help="Print synonym groups for a word as JSON, for editor pickers.",
+    )
+    add_profile_argument(synonyms_parser)
+    synonyms_parser.add_argument("word", help="The word to find synonyms for.")
+
     return parser
 
 
@@ -328,5 +365,8 @@ def main(argv: list[str] | None = None) -> int:
         output = render_doc(profile, args.word)
         if output:
             print(output)
+        return 0
+    if args.command == "synonyms":
+        print(json.dumps(synonym_groups(profile, args.word), ensure_ascii=False))
         return 0
     return fail(f"Unknown command: {args.command}")

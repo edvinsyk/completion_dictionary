@@ -1,11 +1,12 @@
 # `completion-dictionary`
 
-`completion-dictionary` is a small CLI for building newline-delimited dictionary files and serving rich documentation for [blink-cmp-dictionary](https://github.com/Kaiser-Yang/blink-cmp-dictionary).
+`completion-dictionary` is a small CLI for [blink-cmp-dictionary](https://github.com/Kaiser-Yang/blink-cmp-dictionary).
+It builds newline-delimited dictionary files and prints documentation for single words.
 
 The current release supports two profiles, each backed by a different data source.
 
-- `swedish` — completion vocabulary from the [hunspell-sv](https://github.com/yeager/hunspell-sv) Swedish dictionary (including inflected forms), and synonyms from the Synlex / LibreOffice Swedish thesaurus.
-- `english` — lemma completion and WordNet documentation from the [Open English WordNet](https://en-word.net/) through the [wn](https://github.com/goodmami/wn) Python package.
+- `swedish`: completion vocabulary from the [hunspell-sv](https://github.com/yeager/hunspell-sv) Swedish dictionary (including inflected forms), and synonyms from the Synlex / LibreOffice Swedish thesaurus.
+- `english`: lemma completion and WordNet documentation from the [Open English WordNet](https://en-word.net/) through the [wn](https://github.com/goodmami/wn) Python package.
 
 Third-party data is downloaded at build time, not bundled in the package. See
 [`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md) for sources, licenses, and attribution.
@@ -77,7 +78,7 @@ completion-dictionary build --profile english
 
 This command will:
 
-- download and cache the required data for the selected profile if needed
+- if the data for the selected profile is not cached, download and cache it
 - collect the completion vocabulary from the profile's source
 - deduplicate it exactly
 - sort it with `casefold()` for deterministic output
@@ -118,9 +119,9 @@ For the `english` profile this prints a learning/debug view with:
 - ILI id
 - gloss
 
-For the `swedish` profile it reports whether the word is present in the
-completion dictionary (built from Hunspell forms), whether a thesaurus entry
-exists, and lists its synonyms:
+For the `swedish` profile it reports whether the word is in the completion
+dictionary, which is built from Hunspell forms.
+It also reports whether a thesaurus entry exists, and lists the synonyms:
 
 ```text
 Profile: swedish
@@ -140,7 +141,7 @@ completion-dictionary doc --profile swedish säng
 completion-dictionary doc --profile english bed
 ```
 
-This prints the text that `blink-cmp-dictionary` should show in the documentation window.
+This prints the text that `blink-cmp-dictionary` shows in the documentation window.
 If no match exists, it prints nothing and exits successfully.
 
 For the `swedish` profile the doc shows the headword followed by a `Synonymer`
@@ -151,6 +152,23 @@ säng
 
 Synonymer
 bädd, brits
+```
+
+### List synonyms for an editor picker
+
+```bash
+completion-dictionary synonyms --profile swedish viktig
+completion-dictionary synonyms --profile english bed
+```
+
+This prints a JSON list of synonym groups, so an editor can show a picker and replace the word.
+Each group has `words`, `pos` (part of speech), and `gloss`.
+The `swedish` profile sets `pos` and `gloss` to `null`.
+The word itself is left out of `words`, and groups with no other words are left out.
+If no match exists, it prints `[]`.
+
+```json
+[{"words": ["bunk"], "pos": "noun", "gloss": "a piece of furniture that provides a place to sleep"}]
 ```
 
 ## blink.cmp configuration
@@ -244,5 +262,5 @@ If your `uv tool dir --bin` output is not `~/.local/bin`, update `completion_dic
 - Completion candidates come from the static `.dict` files, not from Python at typing time.
 - Python is only used for `lookup` and `doc`, so candidate lookup stays fast.
 - Generated dictionaries are not intended to be committed to the repository or shipped in the Python package.
-- The `english` profile is lemma-only: each line is a single WordNet lemma with no inflected forms. The `swedish` profile is not lemma-only — it is built from Hunspell expanded forms, so inflected forms are included as completion candidates.
+- The `english` profile is lemma-only: each line is a single WordNet lemma with no inflected forms. The `swedish` profile is not lemma-only. It is built from Hunspell expanded forms, so inflected forms are included as completion candidates.
 - Third-party source data is downloaded at build time and cached under the user data directory. See [`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md).
