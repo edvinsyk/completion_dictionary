@@ -1,0 +1,292 @@
+use std::ffi::OsString;
+use std::path::PathBuf;
+
+use clap::{Args, Parser, Subcommand, ValueEnum};
+
+use crate::paths::data_root;
+use crate::{english, swedish};
+
+#[derive(Parser)]
+#[command(
+    name = "completion-dictionary",
+    about = "Build language dictionaries and documentation backends for blink-cmp-dictionary."
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Generate the newline-delimited dictionary file for a profile.
+    Build {
+        #[command(flatten)]
+        profile: ProfileArg,
+        /// Where to write the dictionary file. Defaults to the profile's standard path.
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Redownload upstream dictionary data before building (swedish only).
+        #[arg(long)]
+        refresh: bool,
+    },
+    /// Print the default dictionary path for a profile.
+    Path {
+        #[command(flatten)]
+        profile: ProfileArg,
+        /// Echo a custom output path instead of the default.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Show a learning/debug view for a lemma.
+    Lookup {
+        #[command(flatten)]
+        profile: ProfileArg,
+        /// The lemma to inspect.
+        word: String,
+    },
+    /// Print the documentation text for blink-cmp-dictionary.
+    Doc {
+        #[command(flatten)]
+        profile: ProfileArg,
+        /// The lemma to document.
+        word: String,
+    },
+    /// Print synonym groups for a word as JSON, for editor pickers.
+    Synonyms {
+        #[command(flatten)]
+        profile: ProfileArg,
+        /// The word to find synonyms for.
+        word: String,
+    },
+}
+
+#[derive(Args)]
+struct ProfileArg {
+    /// Which dictionary profile to use.
+    #[arg(long, value_enum, default_value_t = Profile::Swedish)]
+    profile: Profile,
+}
+
+#[derive(Clone, Copy, PartialEq, ValueEnum)]
+enum Profile {
+    English,
+    Swedish,
+}
+
+impl Profile {
+    fn name(self) -> &'static str {
+        match self {
+            Profile::English => "english",
+            Profile::Swedish => "swedish",
+        }
+    }
+
+    fn default_output(self) -> PathBuf {
+        data_root().join(match self {
+            Profile::English => "en-oewn.dict",
+            Profile::Swedish => "sv-hunspell.dict",
+        })
+    }
+}
+
+fn format_pos(pos: &str) -> &str {
+    match pos {
+        "n" => "noun",
+        "v" => "verb",
+        "a" => "adjective",
+        "s" => "adjective satellite",
+        "r" => "adverb",
+        other => other,
+    }
+}
+
+fn fail(message: &str) -> i32 {
+    eprintln!("{message}");
+    1
+}
+
+/// English senses from the index written by `build`; none before a build.
+fn english_senses(query: &str) -> Vec<english::Sense> {
+    english::lookup(&english::index_path(), query).unwrap_or_default()
+}
+
+fn build(profile: Profile, output: Option<PathBuf>, refresh: bool) -> i32 {
+    let output = output.unwrap_or_else(|| profile.default_output());
+    let result = match profile {
+        Profile::Swedish => swedish::build(&output, refresh),
+        Profile::English if refresh => {
+            return fail("--refresh is only supported for the swedish profile.");
+        }
+        Profile::English => english::build(&output),
+    };
+    match result {
+        Ok(()) => 0,
+        Err(message) => fail(&message),
+    }
+}
+
+fn run_lookup(profile: Profile, query: &str) -> i32 {
+    println!("Profile: {}", profile.name());
+    if profile == Profile::Swedish {
+        let index = swedish::lemma_index_path();
+        let (in_dictionary, groups) = swedish::lookup_word(
+            query,
+            &profile.default_output(),
+            &swedish::thesaurus_source_path(),
+            Some(&index),
+        );
+        let yes_no = |value: bool| if value { "yes" } else { "no" };
+        println!("Word: {query}");
+        println!("Completion dictionary: {}", yes_no(in_dictionary));
+        println!(
+            "Thesaurus: {}",
+            yes_no(groups.as_ref().is_some_and(|g| !g.is_empty()))
+        );
+        if let Some(groups) = groups.filter(|g| !g.is_empty()) {
+            println!();
+            println!("Synonyms:");
+            for synonym in groups.iter().flatten() {
+                println!("  {synonym}");
+            }
+        }
+        return 0;
+    }
+
+    let senses = english_senses(query);
+    println!("Lemma: {query}");
+    println!("Matches: {} sense(s)", senses.len());
+    for (index, sense) in senses.iter().enumerate() {
+        println!();
+        println!("Sense {}", index + 1);
+        println!("  Lemma: {}", sense.lemma);
+        println!("  Part of speech: {}", format_pos(&sense.pos));
+        println!("  Synonyms: {}", sense.siblings.join(", "));
+        println!("  ILI: {}", sense.ili.as_deref().unwrap_or("n/a"));
+        println!(
+            "  English gloss: {}",
+            sense.gloss.as_deref().unwrap_or("n/a")
+        );
+    }
+    0
+}
+
+fn render_doc(profile: Profile, query: &str) -> String {
+    if profile == Profile::Swedish {
+        return swedish::render_doc(query);
+    }
+    let senses = english_senses(query);
+    if senses.is_empty() {
+        return String::new();
+    }
+    let mut lines = vec![query.to_string()];
+    for (index, sense) in senses.iter().take(3).enumerate() {
+        lines.push(String::new());
+        lines.push(format!("Sense {} [{}]", index + 1, format_pos(&sense.pos)));
+        lines.push(format!("Synonyms: {}", sense.siblings.join(", ")));
+        lines.push(format!("ILI: {}", sense.ili.as_deref().unwrap_or("n/a")));
+        lines.push(format!(
+            "English gloss: {}",
+            sense.gloss.as_deref().unwrap_or("unavailable")
+        ));
+    }
+    lines.join("\n")
+}
+
+/// One synonym group: the words, the part of speech and the gloss.
+type Group = (Vec<String>, Option<String>, Option<String>);
+
+/// Return synonym groups for `query`, without the query itself.
+///
+/// Swedish groups have no part of speech or gloss. Groups left with no words
+/// are dropped.
+fn synonym_groups(profile: Profile, query: &str) -> Vec<Group> {
+    let groups: Vec<Group> = match profile {
+        Profile::Swedish => {
+            let index = swedish::lemma_index_path();
+            swedish::lookup_synonyms(query, &swedish::thesaurus_source_path(), Some(&index))
+                .unwrap_or_default()
+                .into_iter()
+                .map(|words| (words, None, None))
+                .collect()
+        }
+        Profile::English => english_senses(query)
+            .into_iter()
+            .map(|sense| {
+                (
+                    sense.siblings,
+                    Some(format_pos(&sense.pos).to_string()),
+                    sense.gloss,
+                )
+            })
+            .collect(),
+    };
+    let query = crate::frequency::casefold(query);
+    groups
+        .into_iter()
+        .map(|(words, pos, gloss)| {
+            let words: Vec<String> = words
+                .into_iter()
+                .filter(|word| crate::frequency::casefold(word) != query)
+                .collect();
+            (words, pos, gloss)
+        })
+        .filter(|(words, _, _)| !words.is_empty())
+        .collect()
+}
+
+/// Format like Python's `json.dumps(..., ensure_ascii=False)`, with `", "` and `": "`.
+fn groups_json(groups: &[Group]) -> String {
+    let string = |s: &str| serde_json::to_string(s).expect("strings always serialize");
+    let optional = |s: &Option<String>| s.as_deref().map_or("null".to_string(), string);
+    let items: Vec<String> = groups
+        .iter()
+        .map(|(words, pos, gloss)| {
+            let words: Vec<String> = words.iter().map(|w| string(w)).collect();
+            format!(
+                "{{\"words\": [{}], \"pos\": {}, \"gloss\": {}}}",
+                words.join(", "),
+                optional(pos),
+                optional(gloss)
+            )
+        })
+        .collect();
+    format!("[{}]", items.join(", "))
+}
+
+pub fn run(args: impl IntoIterator<Item = impl Into<OsString> + Clone>) -> i32 {
+    let cli = match Cli::try_parse_from(args) {
+        Ok(cli) => cli,
+        Err(error) => {
+            let _ = error.print();
+            return error.exit_code();
+        }
+    };
+    match cli.command {
+        Command::Build {
+            profile,
+            output,
+            refresh,
+        } => build(profile.profile, output, refresh),
+        Command::Path { profile, output } => {
+            println!(
+                "{}",
+                output
+                    .unwrap_or_else(|| profile.profile.default_output())
+                    .display()
+            );
+            0
+        }
+        Command::Lookup { profile, word } => run_lookup(profile.profile, &word),
+        Command::Doc { profile, word } => {
+            let output = render_doc(profile.profile, &word);
+            if !output.is_empty() {
+                println!("{output}");
+            }
+            0
+        }
+        Command::Synonyms { profile, word } => {
+            println!("{}", groups_json(&synonym_groups(profile.profile, &word)));
+            0
+        }
+    }
+}

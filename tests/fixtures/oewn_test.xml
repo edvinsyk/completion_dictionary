@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LexicalResource xmlns:dc="https://globalwordnet.github.io/schemas/dc/">
+  <Lexicon id="oewn" label="Test" language="en" email="test@example.org" license="https://creativecommons.org/licenses/by/4.0" version="2025+">
+    <LexicalEntry id="oewn-bed-n">
+      <Lemma writtenForm="bed" partOfSpeech="n"/>
+      <Sense id="oewn-bed__1" synset="oewn-1-n">
+        <SenseRelation relType="similar" target="oewn-bunk__1"/>
+      </Sense>
+      <Sense id="oewn-bed__2" synset="oewn-2-n"/>
+    </LexicalEntry>
+    <LexicalEntry id="oewn-bed-v">
+      <Lemma writtenForm="bed" partOfSpeech="v"/>
+      <Sense id="oewn-bed__3" synset="oewn-3-v"/>
+      <Sense id="oewn-bed__4" synset="oewn-4-v"/>
+    </LexicalEntry>
+    <LexicalEntry id="oewn-bunk-n">
+      <Lemma writtenForm="bunk" partOfSpeech="n"/>
+      <Sense id="oewn-bunk__1" synset="oewn-1-n"/>
+    </LexicalEntry>
+    <LexicalEntry id="oewn-US-n">
+      <Lemma writtenForm="US" partOfSpeech="n"/>
+      <Sense id="oewn-US__1" synset="oewn-5-n"/>
+    </LexicalEntry>
+    <LexicalEntry id="oewn-ice_cream-n">
+      <Lemma writtenForm="ice cream" partOfSpeech="n"/>
+      <Sense id="oewn-ice_cream__1" synset="oewn-6-n"/>
+    </LexicalEntry>
+    <LexicalEntry id="oewn-frolicsomeness-n">
+      <Lemma writtenForm="frolicsomeness" partOfSpeech="n"/>
+      <Sense id="oewn-frolicsomeness__1" synset="oewn-7-n"/>
+    </LexicalEntry>
+    <LexicalEntry id="oewn-AS-n">
+      <Lemma writtenForm="AS" partOfSpeech="n"/>
+      <Sense id="oewn-AS__1" synset="oewn-8-n"/>
+    </LexicalEntry>
+    <LexicalEntry id="oewn-As-n">
+      <Lemma writtenForm="As" partOfSpeech="n"/>
+      <Sense id="oewn-As__1" synset="oewn-9-n"/>
+    </LexicalEntry>
+    <LexicalEntry id="oewn-as-r">
+      <Lemma writtenForm="as" partOfSpeech="r"/>
+      <Sense id="oewn-as__1" synset="oewn-10-r"/>
+    </LexicalEntry>
+    <Synset id="oewn-1-n" ili="i1" members="oewn-bed-n oewn-bunk-n" partOfSpeech="n" lexfile="noun.artifact">
+      <Definition>a piece of furniture that provides a place to sleep</Definition>
+      <Example>he sat on the edge of the bed</Example>
+    </Synset>
+    <Synset id="oewn-2-n" ili="in" members="oewn-bed-n" partOfSpeech="n" lexfile="noun.object">
+      <Definition>a plot of ground &amp; soil</Definition>
+      <ILIDefinition>not a gloss</ILIDefinition>
+    </Synset>
+    <Synset id="oewn-3-v" ili="i3" members="oewn-bed-v" partOfSpeech="v" lexfile="verb.contact">
+      <Definition>furnish with a bed</Definition>
+    </Synset>
+    <Synset id="oewn-4-v" ili="i4" members="oewn-bed-v" partOfSpeech="v" lexfile="verb.contact">
+      <Definition>put to bed</Definition>
+    </Synset>
+    <Synset id="oewn-5-n" ili="i5" members="oewn-US-n" partOfSpeech="n" lexfile="noun.location">
+      <Definition>North American republic</Definition>
+    </Synset>
+    <Synset id="oewn-6-n" ili="i6" members="oewn-ice_cream-n" partOfSpeech="n" lexfile="noun.food">
+      <Definition>frozen dessert</Definition>
+    </Synset>
+    <Synset id="oewn-7-n" ili="i7" members="oewn-frolicsomeness-n" partOfSpeech="n" lexfile="noun.attribute">
+      <Definition>the trait of being playful</Definition>
+    </Synset>
+    <Synset id="oewn-8-n" ili="i8" members="oewn-AS-n" partOfSpeech="n" lexfile="noun.location">
+      <Definition>American Samoa</Definition>
+    </Synset>
+    <Synset id="oewn-9-n" ili="i9" members="oewn-As-n" partOfSpeech="n" lexfile="noun.substance">
+      <Definition>arsenic</Definition>
+    </Synset>
+    <Synset id="oewn-10-r" ili="i10" members="oewn-as-r" partOfSpeech="r" lexfile="adv.all">
+      <Definition>to the same degree</Definition>
+    </Synset>
+  </Lexicon>
+</LexicalResource>

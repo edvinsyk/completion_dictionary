@@ -7,7 +7,7 @@ The current release supports two profiles, each backed by a different data sourc
 
 - `swedish`: completion vocabulary from the [hunspell-sv](https://github.com/yeager/hunspell-sv) Swedish dictionary and the [SALDO](https://sprakbanken.se/en/resources/saldom) morphology (about 960,000 word forms, including inflected forms), and synonyms from the Synlex / LibreOffice Swedish thesaurus.
   SALDO also links inflected forms to their base word, so `viktiga` gets the synonyms of `viktig`.
-- `english`: lemma completion and WordNet documentation from the [Open English WordNet](https://en-word.net/) through the [wn](https://github.com/goodmami/wn) Python package.
+- `english`: lemma completion and WordNet documentation from the [Open English WordNet](https://en-word.net/) 2025+ release.
 
 Third-party data is downloaded at build time, not bundled in the package. See
 [`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md) for sources, licenses, and attribution.
@@ -18,48 +18,32 @@ Its documentation hook can call an external command for richer item details.
 
 ## Install
 
-Install directly from GitHub with `uv`:
+Install directly from GitHub with `cargo`:
 
 ```bash
-uv tool install git+https://github.com/edvinsyk/completion_dictionary
+cargo install --git https://github.com/edvinsyk/completion_dictionary
 ```
 
-To install a specific tag, branch, or commit:
+To install a specific tag, branch, or commit, add `--tag`, `--branch`, or `--rev`:
 
 ```bash
-uv tool install git+https://github.com/edvinsyk/completion_dictionary@<ref>
+cargo install --git https://github.com/edvinsyk/completion_dictionary --branch main
+cargo install --git https://github.com/edvinsyk/completion_dictionary --tag v0.1.0
 ```
 
-Examples:
+To update an existing installation, add `--force`:
 
 ```bash
-uv tool install git+https://github.com/edvinsyk/completion_dictionary@main
-uv tool install git+https://github.com/edvinsyk/completion_dictionary@v0.1.0
+cargo install --force --git https://github.com/edvinsyk/completion_dictionary
 ```
 
-If you want to update an existing installation from GitHub:
+For local development from a checkout, install from the working directory:
 
 ```bash
-uv tool install --force git+https://github.com/edvinsyk/completion_dictionary@main
+cargo install --path .
 ```
 
-For local development from a checkout, use an editable install:
-
-```bash
-uv tool install --editable .
-```
-
-If you update local code later, reinstall with:
-
-```bash
-uv tool install --editable --force .
-```
-
-To see where `uv` exposes tool executables:
-
-```bash
-uv tool dir --bin
-```
+Cargo puts the executable in `~/.cargo/bin`, unless you set `CARGO_INSTALL_ROOT` or `CARGO_HOME`.
 
 ## CLI
 
@@ -87,6 +71,7 @@ This command will:
 
 For the `swedish` profile, the first build also downloads the SALDO morphology (about 250 MB) and takes about 15 seconds longer.
 The build writes a small form index, `sv-lemmas.tsv`, to the user data directory, even with `--output`.
+The `english` build also writes a sense index, `en-oewn.tsv` (about 26 MB), to the user data directory. The `doc`, `lookup`, and `synonyms` commands read it.
 
 A normal build uses the cached source files. To download the newest Swedish sources and rebuild, add `--refresh`:
 
@@ -204,7 +189,7 @@ On macOS, the default dictionary paths are:
 Example Blink config:
 
 ```lua
-local completion_dictionary = vim.fn.expand("~/.local/bin/completion-dictionary")
+local completion_dictionary = vim.fn.expand("~/.cargo/bin/completion-dictionary")
 local swedish_dict = vim.fn.expand("~/Library/Application Support/completion-dictionary/sv-hunspell.dict")
 local english_dict = vim.fn.expand("~/Library/Application Support/completion-dictionary/en-oewn.dict")
 
@@ -268,14 +253,14 @@ end
 }
 ```
 
-If your `uv tool dir --bin` output is not `~/.local/bin`, update `completion_dictionary` to that absolute path.
+If `cargo` installs into a different directory, update `completion_dictionary` to that absolute path.
 
 ## Notes
 
 - Generated dictionary files are UTF-8 text with one completion candidate per line.
-- Completion candidates come from the static `.dict` files, not from Python at typing time.
-- Python is only used for `lookup` and `doc`, so candidate lookup stays fast.
+- Completion candidates come from the static `.dict` files, not from `completion-dictionary` at typing time.
+- The editor runs `completion-dictionary` only for `doc` and `synonyms`. These commands read the prebuilt indexes and never download data.
 - The editor keeps the file order for equally good matches only if it tells `fzf` to use `--tiebreak=index` and gives each item a `sortText`. [writing-tools.nvim](https://github.com/edvinsyk/writing-tools.nvim) does this.
-- Generated dictionaries are not intended to be committed to the repository or shipped in the Python package.
+- Generated dictionaries are not intended to be committed to the repository or shipped in the binary.
 - The `english` profile merges single-word WordNet lemmas with the 20,000 most common English words from wordfreq. Only these common words add inflected forms. Multiword lemmas such as `ice cream` are left out. The `swedish` profile is not lemma-only. It merges Hunspell expanded forms with SALDO word forms, so inflected forms are included as completion candidates.
 - Third-party source data is downloaded at build time and cached under the user data directory. See [`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md).

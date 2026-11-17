@@ -1,0 +1,14 @@
+[package]
+name = "completion-dictionary"
+version = "0.1.0"
+edition = "2024"
+description = "Build static completion dictionaries and documentation backends for blink-cmp-dictionary."
+license = "MIT"
+
+[dependencies]
+clap = { version = "4.6.8", features = ["derive"] }
+flate2 = "1.1.11"
+quick-xml = "0.42.0"
+ruzstd = "0.9.1"
+serde_json = "1.0.154"
+ureq = "3.5.2"

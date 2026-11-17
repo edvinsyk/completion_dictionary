@@ -2,7 +2,7 @@
 
 `completion-dictionary` builds its Swedish and English data from third-party
 sources. These sources are **downloaded at build time** into the user data
-directory and are **not** copied into the Python package or committed to the
+directory and are **not** copied into the binary or committed to the
 repository. This keeps the package separate from the upstream dictionary files
 and avoids shipping them until their licenses and attribution are verified.
 
@@ -60,10 +60,16 @@ Citation: Språkbanken Text. SALDO's morphology. https://doi.org/10.23695/agcm-n
 
 ## English — Open English WordNet (OEWN)
 
-Used by the `english` profile. Data is provided through the
-[`wn`](https://github.com/goodmami/wn) Python package (spec `oewn:2025+`), which
-downloads and manages WordNet data. See the `wn` package and
-[Open English WordNet](https://en-word.net/) for its data source and license.
+Used by the `english` profile for the completion vocabulary and for `lookup`,
+`doc`, and `synonyms`. The build writes a sense index, `en-oewn.tsv`, to the
+user data directory.
+
+| Field  | Value |
+|--------|-------|
+| Source | [Open English WordNet](https://en-word.net/) |
+| File   | `english-wordnet-2025-plus.xml.gz` (WN-LMF lexicon) |
+| Version| 2025+ (pinned) |
+| License| [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 
 ## Word frequencies — wordfreq
 
@@ -73,14 +79,13 @@ WordNet lacks, such as `from` and `was`.
 
 | Field  | Value |
 |--------|-------|
-| Source | [wordfreq](https://github.com/rspeer/wordfreq) Python package |
-| Version| Installed as a package dependency (`wordfreq` 3.x) |
-| License| Code: Apache-2.0. Data: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
+| Source | [wordfreq](https://github.com/rspeer/wordfreq) data, as text files from the [wordfreq-rs `models-v1` release](https://github.com/kampersanda/wordfreq-rs/releases/tag/models-v1) |
+| Files  | `large_en.txt.zst`, `large_sv.txt.zst` |
+| Version| `models-v1` (pinned), the same data as the `wordfreq` 3.x Python package |
+| License| [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
 
-Unlike the other sources, the frequency data ships inside the `wordfreq`
-package and is not downloaded at build time. It includes data from Wikipedia,
-OpenSubtitles, and other corpora. See the wordfreq README for the full list of
-sources and their attribution.
+The data includes text from Wikipedia, OpenSubtitles, and other corpora. See
+the wordfreq README for the full list of sources and their attribution.
 
 ## Note on retention
 
