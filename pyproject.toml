@@ -9,7 +9,10 @@ description = "Build static completion dictionaries and documentation backends f
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-dependencies = ["wn>=1.0.0,<2"]
+dependencies = [
+    "wn>=1.0.0,<2",
+    "wordfreq>=3.1.1,<4",
+]
 keywords = ["blink-cmp-dictionary", "blink.cmp", "cli", "dictionary", "wordnet"]
 classifiers = [
     "Environment :: Console",

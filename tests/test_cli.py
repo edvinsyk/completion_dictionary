@@ -38,22 +38,34 @@ class CliTests(unittest.TestCase):
                 Path("/tmp/xdg-home/completion-dictionary"),
             )
 
-    def test_build_dictionary_sorts_casefolded_and_deduplicates(self) -> None:
-        profile = cli.PROFILES["english"]
-        fake_wordnet = FakeWordnet(
-            ["Beta", "alpha", " beta ", "Alpha", "", "ice cream"]
-        )
-
+    def _build_english(self, lemmas: list[str], common_words: int) -> list[str]:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "en.dict"
-            with patch.object(cli, "ensure_wordnet", return_value=fake_wordnet):
-                exit_code = cli.build_dictionary(profile, output_path)
+            with patch.object(
+                cli, "ensure_wordnet", return_value=FakeWordnet(lemmas)
+            ), patch.object(cli, "ENGLISH_COMMON_WORDS", common_words):
+                exit_code = cli.build_dictionary(cli.PROFILES["english"], output_path)
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(
-                output_path.read_text(encoding="utf-8"),
-                "Alpha\nalpha\nBeta\nbeta\n",
-            )
+            return output_path.read_text(encoding="utf-8").splitlines()
+
+    def test_build_dictionary_sorts_by_frequency_and_deduplicates(self) -> None:
+        # Common words first; equal frequencies and unknown words by casefold.
+        # The one added common word is "the".
+        words = self._build_english(
+            ["frolicsomeness", "Beta", "front", " beta ", "zzzq", "", "ice cream"], 1
+        )
+
+        self.assertEqual(
+            words, ["the", "front", "beta", "Beta", "frolicsomeness", "zzzq"]
+        )
+
+    def test_build_dictionary_adds_common_words_missing_from_wordnet(self) -> None:
+        words = self._build_english(["frolicsomeness"], 100)
+
+        self.assertIn("from", words)
+        self.assertLess(words.index("from"), words.index("frolicsomeness"))
+        self.assertTrue(all(word.isalpha() for word in words))
 
     def test_render_doc_limits_output_to_three_senses(self) -> None:
         senses = [

@@ -65,6 +65,23 @@ Used by the `english` profile. Data is provided through the
 downloads and manages WordNet data. See the `wn` package and
 [Open English WordNet](https://en-word.net/) for its data source and license.
 
+## Word frequencies — wordfreq
+
+Used by both profiles to put the most common words first in the completion
+dictionary. The `english` profile also adds the most common English words that
+WordNet lacks, such as `from` and `was`.
+
+| Field  | Value |
+|--------|-------|
+| Source | [wordfreq](https://github.com/rspeer/wordfreq) Python package |
+| Version| Installed as a package dependency (`wordfreq` 3.x) |
+| License| Code: Apache-2.0. Data: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
+
+Unlike the other sources, the frequency data ships inside the `wordfreq`
+package and is not downloaded at build time. It includes data from Wikipedia,
+OpenSubtitles, and other corpora. See the wordfreq README for the full list of
+sources and their attribution.
+
 ## Note on retention
 
 Because sources are downloaded on demand at build time, upstream license texts

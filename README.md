@@ -81,8 +81,9 @@ This command will:
 
 - if the data for the selected profile is not cached, download and cache it
 - collect the completion vocabulary from the profile's source
+- for the `english` profile, add the 20,000 most common English words, because WordNet has no function words such as `from` and no inflected forms such as `was`
 - deduplicate it exactly
-- sort it with `casefold()` for deterministic output
+- sort it with the most common words first, using [wordfreq](https://github.com/rspeer/wordfreq) word frequencies, and sort words with the same frequency alphabetically
 
 For the `swedish` profile, the first build also downloads the SALDO morphology (about 250 MB) and takes about 15 seconds longer.
 The build writes a small form index, `sv-lemmas.tsv`, to the user data directory, even with `--output`.
@@ -274,6 +275,7 @@ If your `uv tool dir --bin` output is not `~/.local/bin`, update `completion_dic
 - Generated dictionary files are UTF-8 text with one completion candidate per line.
 - Completion candidates come from the static `.dict` files, not from Python at typing time.
 - Python is only used for `lookup` and `doc`, so candidate lookup stays fast.
+- The editor keeps the file order for equally good matches only if it tells `fzf` to use `--tiebreak=index` and gives each item a `sortText`. [writing-tools.nvim](https://github.com/edvinsyk/writing-tools.nvim) does this.
 - Generated dictionaries are not intended to be committed to the repository or shipped in the Python package.
-- The `english` profile is lemma-only: each line is a single-word WordNet lemma with no inflected forms. Multiword lemmas such as `ice cream` are left out. The `swedish` profile is not lemma-only. It merges Hunspell expanded forms with SALDO word forms, so inflected forms are included as completion candidates.
+- The `english` profile merges single-word WordNet lemmas with the 20,000 most common English words from wordfreq. Only these common words add inflected forms. Multiword lemmas such as `ice cream` are left out. The `swedish` profile is not lemma-only. It merges Hunspell expanded forms with SALDO word forms, so inflected forms are included as completion candidates.
 - Third-party source data is downloaded at build time and cached under the user data directory. See [`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md).

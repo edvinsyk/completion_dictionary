@@ -493,7 +493,7 @@ class BuildDictionaryTests(unittest.TestCase):
         urlopen.assert_not_called()
         self.assertEqual(
             output_path.read_text(encoding="utf-8"),
-            "arbetat\nBeta\nbeta\növerenskommelse\n",
+            "arbetat\növerenskommelse\nbeta\nBeta\n",
         )
 
 

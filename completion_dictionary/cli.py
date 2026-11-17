@@ -12,10 +12,14 @@ wn: Any = None
 wn_ili: Any = None
 
 from completion_dictionary import swedish
+from completion_dictionary.frequency import sort_by_frequency
 from completion_dictionary.paths import atomic_output, data_root
 
 
 ENGLISH_WORDNET_SPEC = "oewn:2025+"
+#: How many of the most common English words to add to the WordNet lemmas.
+#: WordNet lacks function words ("from", "the") and inflected forms ("was").
+ENGLISH_COMMON_WORDS = 20000
 POS_NAMES = {
     "n": "noun",
     "v": "verb",
@@ -169,7 +173,12 @@ def build_dictionary(
         for word in primary_wordnet.words()
         if (lemma := word.lemma().strip()) and " " not in lemma
     }
-    sorted_lemmas = sorted(lemmas, key=lambda lemma: (lemma.casefold(), lemma))
+    from wordfreq import top_n_list
+
+    lemmas.update(
+        word for word in top_n_list("en", ENGLISH_COMMON_WORDS) if word.isalpha()
+    )
+    sorted_lemmas = sort_by_frequency(lemmas, "en")
     with atomic_output(actual_output) as tmp_path:
         tmp_path.write_text("\n".join(sorted_lemmas) + "\n", encoding="utf-8")
     print(f"Wrote {len(sorted_lemmas)} lemmas to {actual_output}")

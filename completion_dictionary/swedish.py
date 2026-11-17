@@ -7,6 +7,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.request import urlopen
 
+from completion_dictionary.frequency import sort_by_frequency
 from completion_dictionary.paths import atomic_output, data_root
 
 #: Upstream Swedish Hunspell dictionary (yeager/hunspell-sv), fully expanded forms.
@@ -174,8 +175,8 @@ def build_dictionary(output_path: Path, refresh: bool = False) -> int:
     """Build the Swedish completion dictionary from Hunspell and SALDO.
 
     Downloads/caches the sources if needed and merges the Hunspell forms
-    with SALDO's single-word forms, sorted deterministically by
-    ``(casefold, word)`` into a newline-delimited UTF-8 file.  The same
+    with SALDO's single-word forms, most common first (see
+    :func:`sort_by_frequency`), into a newline-delimited UTF-8 file.  The same
     SALDO pass writes the form index that maps inflected forms of
     thesaurus headwords to their base word.  The thesaurus is cached here
     too, so later ``doc`` calls never download from inside the editor.
@@ -194,9 +195,8 @@ def build_dictionary(output_path: Path, refresh: bool = False) -> int:
     print(f"Wrote {form_count} inflected forms to {index_path}")
 
     # Multiword expressions from either source never match a single keyword.
-    sorted_words = sorted(
-        (word for word in words if not any(char.isspace() for char in word)),
-        key=lambda word: (word.casefold(), word),
+    sorted_words = sort_by_frequency(
+        (word for word in words if not any(char.isspace() for char in word)), "sv"
     )
 
     with atomic_output(output_path) as tmp_path:
