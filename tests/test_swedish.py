@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import URLError
 
 from completion_dictionary import swedish
 
@@ -85,7 +86,9 @@ class EnsureDownloadTests(unittest.TestCase):
 
         self.assertEqual(result, destination)
         self.assertEqual(destination.read_bytes(), payload)
-        urlopen.assert_called_once_with(swedish.SWEDISH_HUNSPELL_URL)
+        urlopen.assert_called_once_with(
+            swedish.SWEDISH_HUNSPELL_URL, timeout=swedish.DOWNLOAD_TIMEOUT
+        )
         # Atomic write leaves no temporary file behind.
         self.assertFalse(destination.with_suffix(destination.suffix + ".tmp").exists())
 
@@ -100,6 +103,20 @@ class EnsureDownloadTests(unittest.TestCase):
         self.assertEqual(result, destination)
         self.assertEqual(destination.read_bytes(), b"cached")
         urlopen.assert_not_called()
+
+    def test_network_failure_exits_cleanly_without_temp_file(self) -> None:
+        destination = self._source_dir("mythes-sv") / "th_sv_SE.dat"
+
+        with patch(
+            "completion_dictionary.swedish.urlopen",
+            side_effect=URLError("offline"),
+        ):
+            with self.assertRaises(SystemExit) as exc:
+                swedish.ensure_thesaurus_source()
+
+        self.assertIn("Could not download", str(exc.exception.code))
+        self.assertFalse(destination.exists())
+        self.assertFalse(destination.with_suffix(destination.suffix + ".tmp").exists())
 
     def test_exposes_pinned_source_constants(self) -> None:
         self.assertTrue(swedish.SWEDISH_HUNSPELL_URL.endswith("sv_SE_expanded.dic"))
@@ -149,6 +166,12 @@ class LookupSynonymsTests(unittest.TestCase):
 
     def test_returns_none_for_unknown_word(self) -> None:
         self.assertIsNone(swedish.lookup_synonyms("finnsintte", FIXTURES / "th_sv_test.dat"))
+
+    def test_falls_back_to_lowercase(self) -> None:
+        self.assertEqual(
+            swedish.lookup_synonyms("Hälsa", FIXTURES / "th_sv_test.dat"),
+            (("hälsning", "hälsande"),),
+        )
 
 
 class LookupWordTests(unittest.TestCase):
@@ -244,11 +267,29 @@ class BuildDictionaryTests(unittest.TestCase):
         self._data_patch.start()
         self.addCleanup(self._data_patch.stop)
 
-    def _source_dir(self) -> Path:
-        return self._data / "completion-dictionary" / "sources" / "hunspell-sv"
+    def _source_dir(self, name: str = "hunspell-sv") -> Path:
+        return self._data / "completion-dictionary" / "sources" / name
+
+    def test_build_downloads_thesaurus_too(self) -> None:
+        source = self._source_dir() / "sv_SE_expanded.dic"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("arbete\n", encoding="utf-8")
+
+        output_path = Path(self._temp.name) / "sv-hunspell.dict"
+        with patch(
+            "completion_dictionary.swedish._ensure_download",
+            side_effect=lambda url, destination: destination,
+        ) as download:
+            swedish.build_dictionary(output_path)
+
+        urls = [call.args[0] for call in download.call_args_list]
+        self.assertIn(swedish.MYTHES_URL, urls)
 
     def test_build_writes_sorted_casefolded_forms(self) -> None:
-        # Pre-seed the cached source so no download is needed.
+        # Pre-seed the cached sources so no download is needed.
+        thesaurus = self._source_dir("mythes-sv") / "th_sv_SE.dat"
+        thesaurus.parent.mkdir(parents=True, exist_ok=True)
+        thesaurus.write_bytes(b"UTF-8\n")
         source = self._source_dir() / "sv_SE_expanded.dic"
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text(

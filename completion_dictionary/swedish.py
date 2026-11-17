@@ -23,6 +23,9 @@ MYTHES_VERSION = "master"
 HUNSPELL_SOURCE_DIR = Path("sources") / "hunspell-sv"
 MYTHES_SOURCE_DIR = Path("sources") / "mythes-sv"
 
+#: Seconds to wait on the network before giving up on a download.
+DOWNLOAD_TIMEOUT = 30
+
 
 def _ensure_download(url: str, destination: Path) -> Path:
     """Download ``url`` to ``destination`` unless it already exists.
@@ -30,15 +33,20 @@ def _ensure_download(url: str, destination: Path) -> Path:
     The write is atomic: bytes land in a ``.tmp`` sibling first and are
     moved into place with :meth:`Path.replace`, so an interrupted download
     cannot leave a corrupt source file.  An existing destination is left
-    untouched (cache hit).
+    untouched (cache hit).  A network failure exits with a short message
+    instead of a traceback.
     """
     if destination.exists():
         return destination
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = destination.with_suffix(destination.suffix + ".tmp")
-    with urlopen(url) as response:
-        tmp_path.write_bytes(response.read())
+    try:
+        with urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response:
+            tmp_path.write_bytes(response.read())
+    except OSError as exc:
+        tmp_path.unlink(missing_ok=True)
+        raise SystemExit(f"Could not download {url}: {exc}") from exc
     tmp_path.replace(destination)
     return destination
 
@@ -84,11 +92,13 @@ def parse_hunspell_dictionary(path: Path) -> set[str]:
 def build_dictionary(output_path: Path) -> int:
     """Build the Swedish completion dictionary from the Hunspell source.
 
-    Downloads/caches the source if needed, parses it into unique word forms,
+    Downloads/caches the sources if needed (the thesaurus too, so later
+    ``doc`` calls never download from inside the editor), parses it into unique word forms,
     sorts them deterministically by ``(casefold, word)``, and writes a
     newline-delimited UTF-8 file.  Returns ``0`` on success.
     """
     source = ensure_hunspell_source()
+    ensure_thesaurus_source()
     words = parse_hunspell_dictionary(source)
 
     sorted_words = sorted(words, key=lambda word: (word.casefold(), word))
@@ -192,11 +202,15 @@ def lookup_synonyms(
 ) -> tuple[tuple[str, ...], ...] | None:
     """Return the synonym groups for ``word``, or ``None`` if not found.
 
+    An exact match wins; otherwise the lowercased word is tried, so a
+    capitalized word at the start of a sentence still finds its entry.
+
     ``path`` defaults to the cached Swedish thesaurus source (downloading it
     if needed); tests pass a fixture path to avoid any download.
     """
     source = ensure_thesaurus_source() if path is None else path
-    return _parse_thesaurus_cached(source).get(word)
+    thesaurus = _parse_thesaurus_cached(source)
+    return thesaurus.get(word, thesaurus.get(word.lower()))
 
 
 def lookup_word(
