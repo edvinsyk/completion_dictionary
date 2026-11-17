@@ -87,6 +87,15 @@ This command will:
 For the `swedish` profile, the first build also downloads the SALDO morphology (about 250 MB) and takes about 15 seconds longer.
 The build writes a small form index, `sv-lemmas.tsv`, to the user data directory, even with `--output`.
 
+A normal build uses the cached source files. To download the newest Swedish sources and rebuild, add `--refresh`:
+
+```bash
+completion-dictionary build --profile swedish --refresh
+```
+
+If a download fails, the build stops and keeps the old cached file.
+The `doc` and `synonyms` commands never download data. Before the first `build`, they print nothing.
+
 By default, the tool writes into a user data directory instead of the
 repo.
 
@@ -266,5 +275,5 @@ If your `uv tool dir --bin` output is not `~/.local/bin`, update `completion_dic
 - Completion candidates come from the static `.dict` files, not from Python at typing time.
 - Python is only used for `lookup` and `doc`, so candidate lookup stays fast.
 - Generated dictionaries are not intended to be committed to the repository or shipped in the Python package.
-- The `english` profile is lemma-only: each line is a single WordNet lemma with no inflected forms. The `swedish` profile is not lemma-only. It merges Hunspell expanded forms with SALDO word forms, so inflected forms are included as completion candidates.
+- The `english` profile is lemma-only: each line is a single-word WordNet lemma with no inflected forms. Multiword lemmas such as `ice cream` are left out. The `swedish` profile is not lemma-only. It merges Hunspell expanded forms with SALDO word forms, so inflected forms are included as completion candidates.
 - Third-party source data is downloaded at build time and cached under the user data directory. See [`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md).

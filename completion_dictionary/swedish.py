@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import codecs
 import http.client
+import shutil
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.request import urlopen
+
+from completion_dictionary.paths import data_root
 
 #: Upstream Swedish Hunspell dictionary (yeager/hunspell-sv), fully expanded forms.
 SWEDISH_HUNSPELL_URL = (
@@ -42,23 +45,26 @@ COMPOUND_MSDS = {"c", "ci", "cm", "sms"}
 DOWNLOAD_TIMEOUT = 30
 
 
-def _ensure_download(url: str, destination: Path) -> Path:
+def _ensure_download(url: str, destination: Path, refresh: bool = False) -> Path:
     """Download ``url`` to ``destination`` unless it already exists.
 
-    The write is atomic: bytes land in a ``.tmp`` sibling first and are
+    The write is atomic: bytes stream into a ``.tmp`` sibling first and are
     moved into place with :meth:`Path.replace`, so an interrupted download
     cannot leave a corrupt source file.  An existing destination is left
-    untouched (cache hit).  A network failure exits with a short message
-    instead of a traceback.
+    untouched (cache hit) unless ``refresh`` is true; a failed refresh keeps
+    the old copy.  A network failure exits with a short message instead of a
+    traceback.
     """
-    if destination.exists():
+    if destination.exists() and not refresh:
         return destination
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = destination.with_suffix(destination.suffix + ".tmp")
     try:
-        with urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response:
-            tmp_path.write_bytes(response.read())
+        with urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response, tmp_path.open(
+            "wb"
+        ) as tmp_file:
+            shutil.copyfileobj(response, tmp_file)
     except (OSError, http.client.HTTPException) as exc:
         tmp_path.unlink(missing_ok=True)
         raise SystemExit(f"Could not download {url}: {exc}") from exc
@@ -66,34 +72,30 @@ def _ensure_download(url: str, destination: Path) -> Path:
     return destination
 
 
-def ensure_hunspell_source() -> Path:
+def ensure_hunspell_source(refresh: bool = False) -> Path:
     """Return the path to the cached Swedish Hunspell dictionary, downloading it if needed."""
-    from completion_dictionary.cli import data_root
-
     destination = data_root() / HUNSPELL_SOURCE_DIR / "sv_SE_expanded.dic"
-    return _ensure_download(SWEDISH_HUNSPELL_URL, destination)
+    return _ensure_download(SWEDISH_HUNSPELL_URL, destination, refresh)
 
 
-def ensure_thesaurus_source() -> Path:
+def thesaurus_source_path() -> Path:
+    """Return where the Swedish MyThes thesaurus is cached."""
+    return data_root() / MYTHES_SOURCE_DIR / "th_sv_SE.dat"
+
+
+def ensure_thesaurus_source(refresh: bool = False) -> Path:
     """Return the path to the cached Swedish MyThes thesaurus, downloading it if needed."""
-    from completion_dictionary.cli import data_root
-
-    destination = data_root() / MYTHES_SOURCE_DIR / "th_sv_SE.dat"
-    return _ensure_download(MYTHES_URL, destination)
+    return _ensure_download(MYTHES_URL, thesaurus_source_path(), refresh)
 
 
-def ensure_saldo_source() -> Path:
+def ensure_saldo_source(refresh: bool = False) -> Path:
     """Return the path to the cached SALDO morphology, downloading it if needed."""
-    from completion_dictionary.cli import data_root
-
     destination = data_root() / SALDO_SOURCE_DIR / "saldom.xml"
-    return _ensure_download(SALDO_MORPHOLOGY_URL, destination)
+    return _ensure_download(SALDO_MORPHOLOGY_URL, destination, refresh)
 
 
 def lemma_index_path() -> Path:
     """Return the path of the generated form-to-base-word index."""
-    from completion_dictionary.cli import data_root
-
     return data_root() / LEMMA_INDEX_NAME
 
 
@@ -169,7 +171,7 @@ def parse_hunspell_dictionary(path: Path) -> set[str]:
     return words
 
 
-def build_dictionary(output_path: Path) -> int:
+def build_dictionary(output_path: Path, refresh: bool = False) -> int:
     """Build the Swedish completion dictionary from Hunspell and SALDO.
 
     Downloads/caches the sources if needed and merges the Hunspell forms
@@ -178,12 +180,12 @@ def build_dictionary(output_path: Path) -> int:
     SALDO pass writes the form index that maps inflected forms of
     thesaurus headwords to their base word.  The thesaurus is cached here
     too, so later ``doc`` calls never download from inside the editor.
-    Returns ``0`` on success.
+    ``refresh`` downloads all sources again.  Returns ``0`` on success.
     """
-    words = parse_hunspell_dictionary(ensure_hunspell_source())
-    headwords = set(parse_thesaurus(ensure_thesaurus_source()))
+    words = parse_hunspell_dictionary(ensure_hunspell_source(refresh))
+    headwords = set(parse_thesaurus(ensure_thesaurus_source(refresh)))
     index_pairs: set[tuple[str, str]] = set()
-    for form, lemma in iter_saldo_forms(ensure_saldo_source()):
+    for form, lemma in iter_saldo_forms(ensure_saldo_source(refresh)):
         # Multiword expressions never match a single typed keyword.
         if " " not in form:
             words.add(form)
@@ -326,13 +328,16 @@ def lookup_synonyms(
     A form with several base words (``tomten``: ``tomt`` and ``tomte``)
     returns the groups of all of them, because the intended one is unknown.
 
-    ``path`` defaults to the cached Swedish thesaurus source (downloading it
-    if needed) and ``lemma_path`` to the index written by ``build``; tests
-    pass fixture paths to avoid any download.  A missing index is skipped.
+    ``path`` defaults to the thesaurus cached by ``build`` and ``lemma_path``
+    to the index written by ``build``; tests pass fixture paths.  Nothing is
+    downloaded here: a missing thesaurus returns ``None`` and a missing index
+    is skipped.
     """
     if path is None:
-        path = ensure_thesaurus_source()
+        path = thesaurus_source_path()
         lemma_path = lemma_index_path() if lemma_path is None else lemma_path
+    if not path.exists():
+        return None
     thesaurus = "\n" + _read_thesaurus_text(path)
     candidates = dict.fromkeys((word, word.lower()))
     for candidate in candidates:

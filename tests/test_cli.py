@@ -40,7 +40,9 @@ class CliTests(unittest.TestCase):
 
     def test_build_dictionary_sorts_casefolded_and_deduplicates(self) -> None:
         profile = cli.PROFILES["english"]
-        fake_wordnet = FakeWordnet(["Beta", "alpha", " beta ", "Alpha", ""])
+        fake_wordnet = FakeWordnet(
+            ["Beta", "alpha", " beta ", "Alpha", "", "ice cream"]
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "en.dict"
@@ -70,6 +72,22 @@ class CliTests(unittest.TestCase):
         self.assertIn("Sense 3 [adjective]", output)
         self.assertNotIn("Sense 4", output)
 
+
+    def test_render_doc_without_installed_wordnet_is_empty(self) -> None:
+        with patch.object(cli, "ensure_wordnet", return_value=None) as ensure:
+            output = cli.render_doc(cli.PROFILES["english"], "bed")
+            groups = cli.synonym_groups(cli.PROFILES["english"], "bed")
+
+        self.assertEqual(output, "")
+        self.assertEqual(groups, [])
+        ensure.assert_called_with(download=False)
+
+    def test_build_refresh_rejected_for_english(self) -> None:
+        with patch.object(cli, "ensure_wordnet") as ensure:
+            exit_code = cli.build_dictionary(cli.PROFILES["english"], None, True)
+
+        self.assertEqual(exit_code, 1)
+        ensure.assert_not_called()
 
     def test_render_doc_dispatches_swedish_to_thesaurus(self) -> None:
         with patch.object(
