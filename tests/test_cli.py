@@ -90,7 +90,9 @@ class CliTests(unittest.TestCase):
                 exit_code = cli.run_lookup(cli.PROFILES["swedish"], "betydelsefull")
 
         self.assertEqual(exit_code, 0)
-        mock.assert_called_once_with("betydelsefull")
+        mock.assert_called_once_with(
+            "betydelsefull", cli.PROFILES["swedish"].default_output
+        )
         printed = "".join(str(call) + "\n" for call in print_mock.call_args_list)
         self.assertIn("Profile: swedish", printed)
         self.assertIn("Word: betydelsefull", printed)

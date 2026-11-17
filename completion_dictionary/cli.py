@@ -8,12 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-try:
-    import wn
-    from wn import ili as wn_ili
-except ImportError:  # pragma: no cover - exercised in the CLI
-    wn = None
-    wn_ili = None
+# Imported by require_wn() on first English use; importing wn costs ~60 ms.
+wn: Any = None
+wn_ili: Any = None
 
 from completion_dictionary import swedish
 
@@ -83,7 +80,13 @@ def fail(message: str) -> int:
 
 
 def require_wn() -> None:
-    if wn is None:
+    global wn, wn_ili
+    if wn is not None:
+        return
+    try:
+        import wn
+        from wn import ili as wn_ili
+    except ImportError:  # pragma: no cover - exercised in the CLI
         raise SystemExit(
             fail(
                 "Missing dependency 'wn'. Install it with "
@@ -199,7 +202,7 @@ def build_dictionary(profile: Profile, output_path: Path | None) -> int:
 
 def run_lookup(profile: Profile, query: str) -> int:
     if profile.backend == "swedish":
-        in_dictionary, groups = swedish.lookup_word(query)
+        in_dictionary, groups = swedish.lookup_word(query, profile.default_output)
         print(f"Profile: {profile.name}")
         print(f"Word: {query}")
         print(f"Completion dictionary: {'yes' if in_dictionary else 'no'}")

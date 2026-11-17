@@ -167,6 +167,14 @@ class LookupSynonymsTests(unittest.TestCase):
     def test_returns_none_for_unknown_word(self) -> None:
         self.assertIsNone(swedish.lookup_synonyms("finnsintte", FIXTURES / "th_sv_test.dat"))
 
+    def test_matches_full_parser_for_every_headword(self) -> None:
+        path = FIXTURES / "th_sv_test.dat"
+        for word, groups in swedish.parse_thesaurus(path).items():
+            self.assertEqual(swedish.lookup_synonyms(word, path), groups)
+
+    def test_prefix_of_headword_is_not_a_match(self) -> None:
+        self.assertIsNone(swedish.lookup_synonyms("flit", FIXTURES / "th_sv_test.dat"))
+
     def test_falls_back_to_lowercase(self) -> None:
         self.assertEqual(
             swedish.lookup_synonyms("Hälsa", FIXTURES / "th_sv_test.dat"),
@@ -236,7 +244,7 @@ class LookupWordTests(unittest.TestCase):
     def test_reports_completion_and_thesaurus(self) -> None:
         in_dictionary, groups = swedish.lookup_word(
             "överenskommelse",
-            hunspell_path=FIXTURES / "sv_test.dic",
+            dictionary_path=FIXTURES / "sv_test.dict",
             thesaurus_path=FIXTURES / "th_sv_test.dat",
         )
 
@@ -246,7 +254,7 @@ class LookupWordTests(unittest.TestCase):
     def test_reports_in_dictionary_but_no_thesaurus(self) -> None:
         in_dictionary, groups = swedish.lookup_word(
             "arbete",
-            hunspell_path=FIXTURES / "sv_test.dic",
+            dictionary_path=FIXTURES / "sv_test.dict",
             thesaurus_path=FIXTURES / "th_sv_test.dat",
         )
 
@@ -256,17 +264,36 @@ class LookupWordTests(unittest.TestCase):
     def test_reports_thesaurus_but_not_in_dictionary(self) -> None:
         in_dictionary, groups = swedish.lookup_word(
             "betydelsefull",
-            hunspell_path=FIXTURES / "sv_test.dic",
+            dictionary_path=FIXTURES / "sv_test.dict",
             thesaurus_path=FIXTURES / "th_sv_test.dat",
         )
 
         self.assertFalse(in_dictionary)
         self.assertIsNotNone(groups)
 
+    def test_checks_built_dictionary_not_hunspell_source(self) -> None:
+        # "viktiga" comes from SALDO, so only the built dictionary has it.
+        in_dictionary, _ = swedish.lookup_word(
+            "viktiga",
+            dictionary_path=FIXTURES / "sv_test.dict",
+            thesaurus_path=FIXTURES / "th_sv_test.dat",
+        )
+
+        self.assertTrue(in_dictionary)
+
+    def test_missing_dictionary_reports_not_in_dictionary(self) -> None:
+        in_dictionary, _ = swedish.lookup_word(
+            "arbete",
+            dictionary_path=FIXTURES / "missing.dict",
+            thesaurus_path=FIXTURES / "th_sv_test.dat",
+        )
+
+        self.assertFalse(in_dictionary)
+
     def test_reports_neither_for_unknown_word(self) -> None:
         in_dictionary, groups = swedish.lookup_word(
             "någotutanträff",
-            hunspell_path=FIXTURES / "sv_test.dic",
+            dictionary_path=FIXTURES / "sv_test.dict",
             thesaurus_path=FIXTURES / "th_sv_test.dat",
         )
 

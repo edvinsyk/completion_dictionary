@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import codecs
-import functools
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -130,14 +129,21 @@ def write_lemma_index(pairs: Iterable[tuple[str, str]], output_path: Path) -> in
     return len(pairs)
 
 
-@functools.lru_cache(maxsize=None)
-def _load_lemma_index(path: Path) -> dict[str, tuple[str, ...]]:
-    index: dict[str, list[str]] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        form, _, lemma = line.partition("\t")
-        if lemma:
-            index.setdefault(form, []).append(lemma)
-    return {form: tuple(lemmas) for form, lemmas in index.items()}
+def _index_lemmas(text: str, form: str) -> list[str]:
+    """Return the base words listed for ``form`` in newline-led index text.
+
+    ``text`` is the index with a leading newline, so every line starts with
+    ``\\n`` and a plain substring search finds whole forms only.
+    """
+    key = f"\n{form}\t"
+    lemmas = []
+    start = text.find(key)
+    while start != -1:
+        value_start = start + len(key)
+        end = text.find("\n", value_start)
+        lemmas.append(text[value_start : end if end != -1 else len(text)])
+        start = text.find(key, value_start)
+    return lemmas
 
 
 def parse_hunspell_dictionary(path: Path) -> set[str]:
@@ -213,11 +219,7 @@ def parse_thesaurus(path: Path) -> dict[str, tuple[tuple[str, ...], ...]]:
     The declared encoding is honoured when it names a codec; otherwise UTF-8
     is tried and ISO-8859-1 used as a fallback.
     """
-    raw = path.read_bytes()
-    if raw.startswith(b"\xef\xbb\xbf"):
-        raw = raw[3:]
-
-    text = _decode_thesaurus(raw)
+    text = _read_thesaurus_text(path)
     thesaurus: dict[str, tuple[tuple[str, ...], ...]] = {}
 
     lines = text.splitlines()
@@ -242,6 +244,14 @@ def parse_thesaurus(path: Path) -> dict[str, tuple[tuple[str, ...], ...]]:
         i += group_count + 1
 
     return thesaurus
+
+
+def _read_thesaurus_text(path: Path) -> str:
+    """Read a MyThes file as text, without a UTF-8 byte order mark."""
+    raw = path.read_bytes()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]
+    return _decode_thesaurus(raw)
 
 
 def _decode_thesaurus(raw: bytes) -> str:
@@ -278,9 +288,29 @@ def _split_group(line: str) -> list[str]:
     return [synonym for synonym in line.split("|") if synonym]
 
 
-@functools.lru_cache(maxsize=None)
-def _parse_thesaurus_cached(path: Path) -> dict[str, tuple[tuple[str, ...], ...]]:
-    return parse_thesaurus(path)
+def _thesaurus_entry(text: str, word: str) -> tuple[tuple[str, ...], ...] | None:
+    """Return the synonym groups of the first ``word|N`` entry in ``text``.
+
+    ``text`` is the thesaurus with a leading newline.  Searching for one
+    headword line is much faster than :func:`parse_thesaurus` for a single
+    ``doc`` call.  Group lines start with ``|``, so they never match.
+    """
+    key = f"\n{word}|"
+    start = text.find(key)
+    while start != -1:
+        line_end = text.find("\n", start + 1)
+        if line_end == -1:
+            line_end = len(text)
+        headword, group_count = _parse_headword(text[start + 1 : line_end].rstrip("\r"))
+        if headword == word:
+            group_lines = text[line_end + 1 :].split("\n", group_count)[:group_count]
+            return tuple(
+                tuple(synonyms)
+                for line in group_lines
+                if (synonyms := _split_group(line.rstrip("\r")))
+            )
+        start = text.find(key, line_end)
+    return None
 
 
 def lookup_synonyms(
@@ -300,40 +330,43 @@ def lookup_synonyms(
     if path is None:
         path = ensure_thesaurus_source()
         lemma_path = lemma_index_path() if lemma_path is None else lemma_path
-    thesaurus = _parse_thesaurus_cached(path)
+    thesaurus = "\n" + _read_thesaurus_text(path)
     candidates = dict.fromkeys((word, word.lower()))
     for candidate in candidates:
-        if candidate in thesaurus:
-            return thesaurus[candidate]
+        groups = _thesaurus_entry(thesaurus, candidate)
+        if groups is not None:
+            return groups
 
     if lemma_path is None or not lemma_path.exists():
         return None
-    index = _load_lemma_index(lemma_path)
+    index = "\n" + lemma_path.read_text(encoding="utf-8")
     groups = (
         group
         for candidate in candidates
-        for lemma in index.get(candidate, ())
-        for group in thesaurus.get(lemma, ())
+        for lemma in _index_lemmas(index, candidate)
+        for group in _thesaurus_entry(thesaurus, lemma) or ()
     )
     return tuple(dict.fromkeys(groups)) or None
 
 
 def lookup_word(
     word: str,
-    hunspell_path: Path | None = None,
+    dictionary_path: Path,
     thesaurus_path: Path | None = None,
+    lemma_path: Path | None = None,
 ) -> tuple[bool, tuple[tuple[str, ...], ...] | None]:
     """Report the new-backend lookup data for ``word``.
 
     Returns ``(in_completion_dictionary, synonym_groups)``.  Completion
-    membership is determined against the Hunspell forms (``hunspell_path``,
-    defaulting to the cached source); thesaurus data comes from the MyThes
-    source (``thesaurus_path``, defaulting to the cached source).  Paths may
-    be supplied by tests to avoid downloads.
+    membership is checked against the built dictionary (``dictionary_path``),
+    which merges Hunspell and SALDO forms; it is ``False`` before a build.
+    Synonyms come from :func:`lookup_synonyms`, with ``thesaurus_path`` and
+    ``lemma_path`` passed through so tests can avoid downloads.
     """
-    source = ensure_hunspell_source() if hunspell_path is None else hunspell_path
-    in_dictionary = word in parse_hunspell_dictionary(source)
-    groups = lookup_synonyms(word, thesaurus_path)
+    in_dictionary = dictionary_path.exists() and (
+        f"\n{word}\n" in "\n" + dictionary_path.read_text(encoding="utf-8")
+    )
+    groups = lookup_synonyms(word, thesaurus_path, lemma_path)
     return in_dictionary, groups
 
 
