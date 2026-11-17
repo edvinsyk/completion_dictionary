@@ -56,5 +56,17 @@
   <feat att="msd" val="sg def nom"/>
  </WordForm>
 </LexicalEntry>
+<LexicalEntry>
+ <Lemma>
+  <FormRepresentation>
+   <feat att="writtenForm" val="på gott humör"/>
+   <feat att="partOfSpeech" val="abm"/>
+  </FormRepresentation>
+ </Lemma>
+ <WordForm>
+  <feat att="writtenForm" val="på gott humör"/>
+  <feat att="msd" val="invar"/>
+ </WordForm>
+</LexicalEntry>
 </Lexicon>
 </LexicalResource>

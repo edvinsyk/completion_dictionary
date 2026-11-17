@@ -42,10 +42,12 @@ dictionary.
 
 ## Swedish word forms — SALDO morphology
 
-Used by the `swedish` profile to link inflected forms to their base word, so
-synonym lookup works for forms such as `viktiga` (base word `viktig`). The
-build keeps only the forms whose base word has a thesaurus entry and writes them
-to `sv-lemmas.tsv` in the user data directory.
+Used by the `swedish` profile in two ways. Its single-word forms are added to
+the completion dictionary, because the Hunspell list lacks many inflected forms
+such as `viktiga` and `husen`. It also links inflected forms to their base word,
+so synonym lookup works for `viktiga` (base word `viktig`). The build writes the
+forms whose base word has a thesaurus entry to `sv-lemmas.tsv` in the user data
+directory.
 
 | Field  | Value |
 |--------|-------|

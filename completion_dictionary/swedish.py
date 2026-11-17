@@ -3,6 +3,7 @@ from __future__ import annotations
 import codecs
 import functools
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -21,6 +22,7 @@ MYTHES_URL = (
 MYTHES_VERSION = "master"
 
 #: SALDO morphology (Språkbanken): every inflected form with its base word.
+#: It adds forms the Hunspell list lacks, such as ``viktiga`` and ``husen``.
 SALDO_MORPHOLOGY_URL = (
     "https://svn.spraakbanken.gu.se/sb-arkiv/pub/lmf/saldom/saldom.xml"
 )
@@ -95,32 +97,31 @@ def lemma_index_path() -> Path:
     return data_root() / LEMMA_INDEX_NAME
 
 
-def build_lemma_index(
-    saldo_path: Path, headwords: set[str], output_path: Path
-) -> int:
-    """Write ``form<TAB>base word`` lines for inflected forms of ``headwords``.
+def iter_saldo_forms(saldo_path: Path) -> Iterator[tuple[str, str]]:
+    """Yield ``(form, base word)`` for each standalone word form in SALDO.
 
-    Streams the SALDO morphology XML, keeps entries whose base word is a
-    thesaurus headword, and skips compound parts and pieces of multiword
-    expressions (``msd`` values such as ``c`` or ``sg indef nom 1:1-2``).
-    Returns the number of lines written.
+    Streams the SALDO morphology XML and skips compound parts and pieces of
+    multiword expressions (``msd`` values such as ``c`` or
+    ``sg indef nom 1:1-2``).
     """
-    pairs: set[tuple[str, str]] = set()
     for _, element in ET.iterparse(saldo_path):
         if element.tag != "LexicalEntry":
             continue
         lemma_feat = element.find("Lemma/FormRepresentation/feat[@att='writtenForm']")
         lemma = lemma_feat.get("val") if lemma_feat is not None else None
-        if lemma in headwords:
+        if lemma:
             for word_form in element.iterfind("WordForm"):
                 feats = {feat.get("att"): feat.get("val") for feat in word_form}
                 msd = feats.get("msd") or ""
                 form = feats.get("writtenForm")
-                if msd in COMPOUND_MSDS or ":" in msd or not form or form == lemma:
-                    continue
-                pairs.add((form, lemma))
+                if form and msd not in COMPOUND_MSDS and ":" not in msd:
+                    yield form, lemma
         element.clear()
 
+
+def write_lemma_index(pairs: Iterable[tuple[str, str]], output_path: Path) -> int:
+    """Write sorted ``form<TAB>base word`` lines and return how many."""
+    pairs = set(pairs)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         "".join(f"{form}\t{lemma}\n" for form, lemma in sorted(pairs)),
@@ -162,21 +163,29 @@ def parse_hunspell_dictionary(path: Path) -> set[str]:
 
 
 def build_dictionary(output_path: Path) -> int:
-    """Build the Swedish completion dictionary from the Hunspell source.
+    """Build the Swedish completion dictionary from Hunspell and SALDO.
 
-    Downloads/caches the Hunspell source if needed, parses it into unique
-    word forms, sorts them deterministically by ``(casefold, word)``, and
-    writes a newline-delimited UTF-8 file.  Also caches the thesaurus and
-    builds the SALDO form index, so later ``doc`` calls never download from
-    inside the editor and inflected forms find their base word's synonyms.
+    Downloads/caches the sources if needed and merges the Hunspell forms
+    with SALDO's single-word forms, sorted deterministically by
+    ``(casefold, word)`` into a newline-delimited UTF-8 file.  The same
+    SALDO pass writes the form index that maps inflected forms of
+    thesaurus headwords to their base word.  The thesaurus is cached here
+    too, so later ``doc`` calls never download from inside the editor.
     Returns ``0`` on success.
     """
-    source = ensure_hunspell_source()
-    thesaurus = parse_thesaurus(ensure_thesaurus_source())
+    words = parse_hunspell_dictionary(ensure_hunspell_source())
+    headwords = set(parse_thesaurus(ensure_thesaurus_source()))
+    index_pairs: set[tuple[str, str]] = set()
+    for form, lemma in iter_saldo_forms(ensure_saldo_source()):
+        # Multiword expressions never match a single typed keyword.
+        if " " not in form:
+            words.add(form)
+        if lemma in headwords and form != lemma:
+            index_pairs.add((form, lemma))
+
     index_path = lemma_index_path()
-    form_count = build_lemma_index(ensure_saldo_source(), set(thesaurus), index_path)
+    form_count = write_lemma_index(index_pairs, index_path)
     print(f"Wrote {form_count} inflected forms to {index_path}")
-    words = parse_hunspell_dictionary(source)
 
     sorted_words = sorted(words, key=lambda word: (word.casefold(), word))
 

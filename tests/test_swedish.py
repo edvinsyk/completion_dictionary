@@ -178,11 +178,23 @@ class LemmaIndexTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp = tempfile.TemporaryDirectory()
         self.addCleanup(self._temp.cleanup)
-        self.index = Path(self._temp.name) / "sv-lemmas.tsv"
-        headwords = set(swedish.parse_thesaurus(FIXTURES / "th_sv_test.dat"))
-        self.count = swedish.build_lemma_index(
-            FIXTURES / "saldom_test.xml", headwords, self.index
-        )
+        data = Path(self._temp.name)
+        env_patch = patch.dict("os.environ", {"XDG_DATA_HOME": str(data)}, clear=True)
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
+
+        sources = data / "completion-dictionary" / "sources"
+        for name, filename, fixture in [
+            ("hunspell-sv", "sv_SE_expanded.dic", "sv_test.dic"),
+            ("mythes-sv", "th_sv_SE.dat", "th_sv_test.dat"),
+            ("saldo", "saldom.xml", "saldom_test.xml"),
+        ]:
+            (sources / name).mkdir(parents=True)
+            (sources / name / filename).write_bytes((FIXTURES / fixture).read_bytes())
+
+        self.output = data / "sv-hunspell.dict"
+        swedish.build_dictionary(self.output)
+        self.index = swedish.lemma_index_path()
 
     def test_keeps_inflected_forms_of_headwords_only(self) -> None:
         # Base forms, compound parts ("flitig-"), multiword pieces ("hälsor"),
@@ -191,7 +203,14 @@ class LemmaIndexTests(unittest.TestCase):
             self.index.read_text(encoding="utf-8"),
             "flitiga\tflitig\nflitigt\tflitig\nhälsan\thälsa\n",
         )
-        self.assertEqual(self.count, 3)
+
+    def test_completion_list_merges_saldo_forms(self) -> None:
+        words = self.output.read_text(encoding="utf-8").splitlines()
+
+        for form in ["arbetet", "flitiga", "hälsan", "arbetar"]:
+            self.assertIn(form, words)
+        for form in ["flitig-", "hälsor", "på gott humör"]:
+            self.assertNotIn(form, words)
 
     def test_inflected_form_finds_base_word_synonyms(self) -> None:
         groups = swedish.lookup_synonyms(
@@ -334,9 +353,12 @@ class BuildDictionaryTests(unittest.TestCase):
         self.assertTrue(swedish.lemma_index_path().exists())
 
     def test_build_writes_sorted_casefolded_forms(self) -> None:
-        # Pre-seed the cached sources so no download is needed.
+        # Pre-seed the cached sources so no download is needed; an empty
+        # SALDO keeps the output to the Hunspell forms under test.
         self._seed("mythes-sv", "th_sv_SE.dat", "th_sv_test.dat")
-        self._seed("saldo", "saldom.xml", "saldom_test.xml")
+        saldo = self._source_dir("saldo") / "saldom.xml"
+        saldo.parent.mkdir(parents=True, exist_ok=True)
+        saldo.write_text("<LexicalResource><Lexicon/></LexicalResource>")
         source = self._source_dir() / "sv_SE_expanded.dic"
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text(

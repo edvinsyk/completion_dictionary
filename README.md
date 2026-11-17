@@ -5,8 +5,8 @@ It builds newline-delimited dictionary files and prints documentation for single
 
 The current release supports two profiles, each backed by a different data source.
 
-- `swedish`: completion vocabulary from the [hunspell-sv](https://github.com/yeager/hunspell-sv) Swedish dictionary (including inflected forms), and synonyms from the Synlex / LibreOffice Swedish thesaurus.
-  The [SALDO](https://sprakbanken.se/en/resources/saldom) morphology links inflected forms to their base word, so `viktiga` gets the synonyms of `viktig`.
+- `swedish`: completion vocabulary from the [hunspell-sv](https://github.com/yeager/hunspell-sv) Swedish dictionary and the [SALDO](https://sprakbanken.se/en/resources/saldom) morphology (about 960,000 word forms, including inflected forms), and synonyms from the Synlex / LibreOffice Swedish thesaurus.
+  SALDO also links inflected forms to their base word, so `viktiga` gets the synonyms of `viktig`.
 - `english`: lemma completion and WordNet documentation from the [Open English WordNet](https://en-word.net/) through the [wn](https://github.com/goodmami/wn) Python package.
 
 Third-party data is downloaded at build time, not bundled in the package. See
@@ -266,5 +266,5 @@ If your `uv tool dir --bin` output is not `~/.local/bin`, update `completion_dic
 - Completion candidates come from the static `.dict` files, not from Python at typing time.
 - Python is only used for `lookup` and `doc`, so candidate lookup stays fast.
 - Generated dictionaries are not intended to be committed to the repository or shipped in the Python package.
-- The `english` profile is lemma-only: each line is a single WordNet lemma with no inflected forms. The `swedish` profile is not lemma-only. It is built from Hunspell expanded forms, so inflected forms are included as completion candidates.
+- The `english` profile is lemma-only: each line is a single WordNet lemma with no inflected forms. The `swedish` profile is not lemma-only. It merges Hunspell expanded forms with SALDO word forms, so inflected forms are included as completion candidates.
 - Third-party source data is downloaded at build time and cached under the user data directory. See [`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md).
