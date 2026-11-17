@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import codecs
+import http.client
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -58,7 +59,7 @@ def _ensure_download(url: str, destination: Path) -> Path:
     try:
         with urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response:
             tmp_path.write_bytes(response.read())
-    except OSError as exc:
+    except (OSError, http.client.HTTPException) as exc:
         tmp_path.unlink(missing_ok=True)
         raise SystemExit(f"Could not download {url}: {exc}") from exc
     tmp_path.replace(destination)
@@ -322,6 +323,8 @@ def lookup_synonyms(
     capitalized word at the start of a sentence still finds its entry.
     If neither is a headword, the SALDO form index maps an inflected form
     (``viktiga``) to its base word (``viktig``) and returns those groups.
+    A form with several base words (``tomten``: ``tomt`` and ``tomte``)
+    returns the groups of all of them, because the intended one is unknown.
 
     ``path`` defaults to the cached Swedish thesaurus source (downloading it
     if needed) and ``lemma_path`` to the index written by ``build``; tests

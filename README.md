@@ -85,7 +85,7 @@ This command will:
 - sort it with `casefold()` for deterministic output
 
 For the `swedish` profile, the first build also downloads the SALDO morphology (about 250 MB) and takes about 15 seconds longer.
-The build writes a small form index, `sv-lemmas.tsv`, next to the dictionary.
+The build writes a small form index, `sv-lemmas.tsv`, to the user data directory, even with `--output`.
 
 By default, the tool writes into a user data directory instead of the
 repo.
@@ -123,8 +123,8 @@ For the `english` profile this prints a learning/debug view with:
 - ILI id
 - gloss
 
-For the `swedish` profile it reports whether the word is in the completion
-dictionary, which is built from Hunspell forms.
+For the `swedish` profile it reports whether the word is in the built completion
+dictionary, which merges Hunspell and SALDO forms.
 It also reports whether a thesaurus entry exists, and lists the synonyms:
 
 ```text

@@ -4,7 +4,8 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from http.client import IncompleteRead
+from unittest.mock import MagicMock, patch
 from urllib.error import URLError
 
 from completion_dictionary import swedish
@@ -117,6 +118,17 @@ class EnsureDownloadTests(unittest.TestCase):
         self.assertIn("Could not download", str(exc.exception.code))
         self.assertFalse(destination.exists())
         self.assertFalse(destination.with_suffix(destination.suffix + ".tmp").exists())
+
+    def test_dropped_connection_exits_cleanly(self) -> None:
+        response = MagicMock()
+        response.__enter__.return_value.read.side_effect = IncompleteRead(b"x", 10)
+
+        with patch("completion_dictionary.swedish.urlopen", return_value=response):
+            with self.assertRaises(SystemExit) as exc:
+                swedish.ensure_saldo_source()
+
+        self.assertIn("Could not download", str(exc.exception.code))
+        self.assertFalse(any(self._source_dir("saldo").iterdir()))
 
     def test_exposes_pinned_source_constants(self) -> None:
         self.assertTrue(swedish.SWEDISH_HUNSPELL_URL.endswith("sv_SE_expanded.dic"))
