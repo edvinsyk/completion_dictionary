@@ -73,8 +73,9 @@ class EnsureDownloadTests(unittest.TestCase):
             def __exit__(self, *args: object) -> None:
                 return None
 
-            def read(self) -> bytes:
-                return self._body
+            def read(self, size: int = -1) -> bytes:
+                body, self._body = self._body, b""
+                return body
 
         destination = self._source_dir("hunspell-sv") / "sv_SE_expanded.dic"
         self.assertFalse(destination.exists())
@@ -104,6 +105,32 @@ class EnsureDownloadTests(unittest.TestCase):
         self.assertEqual(result, destination)
         self.assertEqual(destination.read_bytes(), b"cached")
         urlopen.assert_not_called()
+
+    def test_refresh_replaces_cached_source(self) -> None:
+        destination = self._source_dir("mythes-sv") / "th_sv_SE.dat"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"old")
+        response = MagicMock()
+        response.__enter__.return_value.read.side_effect = [b"new", b""]
+
+        with patch("completion_dictionary.swedish.urlopen", return_value=response):
+            swedish.ensure_thesaurus_source(refresh=True)
+
+        self.assertEqual(destination.read_bytes(), b"new")
+
+    def test_failed_refresh_keeps_cached_source(self) -> None:
+        destination = self._source_dir("mythes-sv") / "th_sv_SE.dat"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"old")
+
+        with patch(
+            "completion_dictionary.swedish.urlopen",
+            side_effect=URLError("offline"),
+        ):
+            with self.assertRaises(SystemExit):
+                swedish.ensure_thesaurus_source(refresh=True)
+
+        self.assertEqual(destination.read_bytes(), b"old")
 
     def test_network_failure_exits_cleanly_without_temp_file(self) -> None:
         destination = self._source_dir("mythes-sv") / "th_sv_SE.dat"
@@ -353,6 +380,14 @@ class RenderDocTests(unittest.TestCase):
     def test_returns_empty_string_for_unknown_word(self) -> None:
         self.assertEqual(swedish.render_doc("någotutanträff"), "")
 
+    def test_missing_thesaurus_returns_empty_without_download(self) -> None:
+        swedish.thesaurus_source_path().unlink()
+
+        with patch("completion_dictionary.swedish.urlopen") as urlopen:
+            self.assertEqual(swedish.render_doc("flitig"), "")
+
+        urlopen.assert_not_called()
+
 
 class BuildDictionaryTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -382,7 +417,7 @@ class BuildDictionaryTests(unittest.TestCase):
         output_path = Path(self._temp.name) / "sv-hunspell.dict"
         with patch(
             "completion_dictionary.swedish._ensure_download",
-            side_effect=lambda url, destination: destination,
+            side_effect=lambda url, destination, refresh: destination,
         ) as download:
             swedish.build_dictionary(output_path)
 

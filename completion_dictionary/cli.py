@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +12,7 @@ wn: Any = None
 wn_ili: Any = None
 
 from completion_dictionary import swedish
+from completion_dictionary.paths import data_root
 
 
 CILI_SPEC = "cili:1.0"
@@ -24,20 +24,6 @@ POS_NAMES = {
     "s": "adjective satellite",
     "r": "adverb",
 }
-
-
-def data_root() -> Path:
-    xdg_data_home = os.environ.get("XDG_DATA_HOME")
-    if xdg_data_home:
-        return Path(xdg_data_home) / "completion-dictionary"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "completion-dictionary"
-    if os.name == "nt":
-        local_app_data = os.environ.get("LOCALAPPDATA")
-        if local_app_data:
-            return Path(local_app_data) / "completion-dictionary"
-        return Path.home() / "AppData" / "Local" / "completion-dictionary"
-    return Path.home() / ".local" / "share" / "completion-dictionary"
 
 
 @dataclass(frozen=True)
@@ -114,8 +100,11 @@ def load_profile(name: str) -> Profile:
         raise SystemExit(fail(f"Unknown profile: {name}")) from exc
 
 
-def ensure_wordnet() -> Any:
+def ensure_wordnet(download: bool = True) -> Any:
+    """Return the English WordNet, or ``None`` if it is missing and ``download`` is false."""
     require_wn()
+    if not download and not wn.lexicons(lexicon=ENGLISH_WORDNET_SPEC):
+        return None
     ensure_package(ENGLISH_WORDNET_SPEC)
     return wn.Wordnet(ENGLISH_WORDNET_SPEC, expand="")
 
@@ -183,15 +172,20 @@ def format_pos(pos: str) -> str:
     return POS_NAMES.get(pos, pos)
 
 
-def build_dictionary(profile: Profile, output_path: Path | None) -> int:
+def build_dictionary(
+    profile: Profile, output_path: Path | None, refresh: bool = False
+) -> int:
     if profile.backend == "swedish":
-        return swedish.build_dictionary(output_path or profile.default_output)
+        return swedish.build_dictionary(output_path or profile.default_output, refresh)
+    if refresh:
+        return fail("--refresh is only supported for the swedish profile.")
     primary_wordnet = ensure_wordnet()
     actual_output = output_path or profile.default_output
+    # Multiword lemmas ("ice cream") never match a single typed keyword.
     lemmas = {
-        word.lemma().strip()
+        lemma
         for word in primary_wordnet.words()
-        if word.lemma().strip()
+        if (lemma := word.lemma().strip()) and " " not in lemma
     }
     actual_output.parent.mkdir(parents=True, exist_ok=True)
     sorted_lemmas = sorted(lemmas, key=lambda lemma: (lemma.casefold(), lemma))
@@ -217,9 +211,6 @@ def run_lookup(profile: Profile, query: str) -> int:
 
     primary_wordnet = ensure_wordnet()
     senses = collect_senses(query, primary_wordnet, None)
-    if not senses:
-        return 0
-
     print(f"Profile: {profile.name}")
     print(f"Lemma: {query}")
     print(f"Matches: {len(senses)} sense(s)")
@@ -238,7 +229,10 @@ def render_doc(profile: Profile, query: str) -> str:
     if profile.backend == "swedish":
         return swedish.render_doc(query)
 
-    primary_wordnet = ensure_wordnet()
+    # The editor calls doc on every completion; never download from there.
+    primary_wordnet = ensure_wordnet(download=False)
+    if primary_wordnet is None:
+        return ""
     senses = collect_senses(query, primary_wordnet, None)
     if not senses:
         return ""
@@ -252,7 +246,7 @@ def render_doc(profile: Profile, query: str) -> str:
         if sense.gloss:
             lines.append(f"English gloss: {sense.gloss}")
         else:
-            lines.append(f"English gloss: unavailable")
+            lines.append("English gloss: unavailable")
     return "\n".join(lines)
 
 
@@ -268,6 +262,8 @@ def synonym_groups(profile: Profile, query: str) -> list[dict[str, Any]]:
             {"words": list(group), "pos": None, "gloss": None}
             for group in swedish.lookup_synonyms(query) or ()
         ]
+    elif (primary_wordnet := ensure_wordnet(download=False)) is None:
+        groups = []
     else:
         groups = [
             {
@@ -275,7 +271,7 @@ def synonym_groups(profile: Profile, query: str) -> list[dict[str, Any]]:
                 "pos": format_pos(sense.pos),
                 "gloss": sense.gloss,
             }
-            for sense in collect_senses(query, ensure_wordnet(), None)
+            for sense in collect_senses(query, primary_wordnet, None)
         ]
 
     for group in groups:
@@ -315,6 +311,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Where to write the dictionary file. Defaults to the profile's standard path.",
+    )
+    build_parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Redownload upstream dictionary data before building (swedish only).",
     )
 
     path_parser = subparsers.add_parser(
@@ -359,7 +360,7 @@ def main(argv: list[str] | None = None) -> int:
     profile = load_profile(args.profile)
 
     if args.command == "build":
-        return build_dictionary(profile, args.output)
+        return build_dictionary(profile, args.output, args.refresh)
     if args.command == "path":
         return print_path(profile, args.output)
     if args.command == "lookup":
