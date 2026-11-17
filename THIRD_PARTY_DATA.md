@@ -40,6 +40,24 @@ The thesaurus is based on the [Synlex](https://folkets-lexikon.csc.kth.se/synlex
 project led by Viggo Kann at KTH, a collaboratively built Swedish synonym
 dictionary.
 
+## Swedish word forms — SALDO morphology
+
+Used by the `swedish` profile in two ways. Its single-word forms are added to
+the completion dictionary, because the Hunspell list lacks many inflected forms
+such as `viktiga` and `husen`. It also links inflected forms to their base word,
+so synonym lookup works for `viktiga` (base word `viktig`). The build writes the
+forms whose base word has a thesaurus entry to `sv-lemmas.tsv` in the user data
+directory.
+
+| Field  | Value |
+|--------|-------|
+| Source | [SALDO's morphology](https://sprakbanken.se/en/resources/saldom), Språkbanken Text, University of Gothenburg |
+| File   | `saldom.xml` (LMF lexicon, about 250 MB) |
+| Version| Release dated 2017-09-19 (URL pinned in `completion_dictionary/swedish.py`) |
+| License| [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+
+Citation: Språkbanken Text. SALDO's morphology. https://doi.org/10.23695/agcm-ny22
+
 ## English — Open English WordNet (OEWN)
 
 Used by the `english` profile. Data is provided through the

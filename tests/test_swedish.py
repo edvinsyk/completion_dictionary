@@ -4,7 +4,9 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from http.client import IncompleteRead
+from unittest.mock import MagicMock, patch
+from urllib.error import URLError
 
 from completion_dictionary import swedish
 
@@ -85,7 +87,9 @@ class EnsureDownloadTests(unittest.TestCase):
 
         self.assertEqual(result, destination)
         self.assertEqual(destination.read_bytes(), payload)
-        urlopen.assert_called_once_with(swedish.SWEDISH_HUNSPELL_URL)
+        urlopen.assert_called_once_with(
+            swedish.SWEDISH_HUNSPELL_URL, timeout=swedish.DOWNLOAD_TIMEOUT
+        )
         # Atomic write leaves no temporary file behind.
         self.assertFalse(destination.with_suffix(destination.suffix + ".tmp").exists())
 
@@ -100,6 +104,31 @@ class EnsureDownloadTests(unittest.TestCase):
         self.assertEqual(result, destination)
         self.assertEqual(destination.read_bytes(), b"cached")
         urlopen.assert_not_called()
+
+    def test_network_failure_exits_cleanly_without_temp_file(self) -> None:
+        destination = self._source_dir("mythes-sv") / "th_sv_SE.dat"
+
+        with patch(
+            "completion_dictionary.swedish.urlopen",
+            side_effect=URLError("offline"),
+        ):
+            with self.assertRaises(SystemExit) as exc:
+                swedish.ensure_thesaurus_source()
+
+        self.assertIn("Could not download", str(exc.exception.code))
+        self.assertFalse(destination.exists())
+        self.assertFalse(destination.with_suffix(destination.suffix + ".tmp").exists())
+
+    def test_dropped_connection_exits_cleanly(self) -> None:
+        response = MagicMock()
+        response.__enter__.return_value.read.side_effect = IncompleteRead(b"x", 10)
+
+        with patch("completion_dictionary.swedish.urlopen", return_value=response):
+            with self.assertRaises(SystemExit) as exc:
+                swedish.ensure_saldo_source()
+
+        self.assertIn("Could not download", str(exc.exception.code))
+        self.assertFalse(any(self._source_dir("saldo").iterdir()))
 
     def test_exposes_pinned_source_constants(self) -> None:
         self.assertTrue(swedish.SWEDISH_HUNSPELL_URL.endswith("sv_SE_expanded.dic"))
@@ -150,12 +179,84 @@ class LookupSynonymsTests(unittest.TestCase):
     def test_returns_none_for_unknown_word(self) -> None:
         self.assertIsNone(swedish.lookup_synonyms("finnsintte", FIXTURES / "th_sv_test.dat"))
 
+    def test_matches_full_parser_for_every_headword(self) -> None:
+        path = FIXTURES / "th_sv_test.dat"
+        for word, groups in swedish.parse_thesaurus(path).items():
+            self.assertEqual(swedish.lookup_synonyms(word, path), groups)
+
+    def test_prefix_of_headword_is_not_a_match(self) -> None:
+        self.assertIsNone(swedish.lookup_synonyms("flit", FIXTURES / "th_sv_test.dat"))
+
+    def test_falls_back_to_lowercase(self) -> None:
+        self.assertEqual(
+            swedish.lookup_synonyms("Hälsa", FIXTURES / "th_sv_test.dat"),
+            (("hälsning", "hälsande"),),
+        )
+
+
+class LemmaIndexTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temp.cleanup)
+        data = Path(self._temp.name)
+        env_patch = patch.dict("os.environ", {"XDG_DATA_HOME": str(data)}, clear=True)
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
+
+        sources = data / "completion-dictionary" / "sources"
+        for name, filename, fixture in [
+            ("hunspell-sv", "sv_SE_expanded.dic", "sv_test.dic"),
+            ("mythes-sv", "th_sv_SE.dat", "th_sv_test.dat"),
+            ("saldo", "saldom.xml", "saldom_test.xml"),
+        ]:
+            (sources / name).mkdir(parents=True)
+            (sources / name / filename).write_bytes((FIXTURES / fixture).read_bytes())
+
+        self.output = data / "sv-hunspell.dict"
+        swedish.build_dictionary(self.output)
+        self.index = swedish.lemma_index_path()
+
+    def test_keeps_inflected_forms_of_headwords_only(self) -> None:
+        # Base forms, compound parts ("flitig-"), multiword pieces ("hälsor"),
+        # and words without a thesaurus entry ("arbetet") are left out.
+        self.assertEqual(
+            self.index.read_text(encoding="utf-8"),
+            "flitiga\tflitig\nflitigt\tflitig\nhälsan\thälsa\n",
+        )
+
+    def test_completion_list_merges_saldo_forms(self) -> None:
+        words = self.output.read_text(encoding="utf-8").splitlines()
+
+        for form in ["arbetet", "flitiga", "hälsan", "arbetar"]:
+            self.assertIn(form, words)
+        for form in ["flitig-", "hälsor", "på gott humör"]:
+            self.assertNotIn(form, words)
+
+    def test_inflected_form_finds_base_word_synonyms(self) -> None:
+        groups = swedish.lookup_synonyms(
+            "Flitiga", FIXTURES / "th_sv_test.dat", self.index
+        )
+
+        self.assertEqual(groups, (("ivrig", "ambitiös"), ("arbetsam", "strävsam")))
+
+    def test_unknown_form_without_index_entry_is_none(self) -> None:
+        self.assertIsNone(
+            swedish.lookup_synonyms("arbetet", FIXTURES / "th_sv_test.dat", self.index)
+        )
+
+    def test_missing_index_is_skipped(self) -> None:
+        self.index.unlink()
+
+        self.assertIsNone(
+            swedish.lookup_synonyms("flitiga", FIXTURES / "th_sv_test.dat", self.index)
+        )
+
 
 class LookupWordTests(unittest.TestCase):
     def test_reports_completion_and_thesaurus(self) -> None:
         in_dictionary, groups = swedish.lookup_word(
             "överenskommelse",
-            hunspell_path=FIXTURES / "sv_test.dic",
+            dictionary_path=FIXTURES / "sv_test.dict",
             thesaurus_path=FIXTURES / "th_sv_test.dat",
         )
 
@@ -165,7 +266,7 @@ class LookupWordTests(unittest.TestCase):
     def test_reports_in_dictionary_but_no_thesaurus(self) -> None:
         in_dictionary, groups = swedish.lookup_word(
             "arbete",
-            hunspell_path=FIXTURES / "sv_test.dic",
+            dictionary_path=FIXTURES / "sv_test.dict",
             thesaurus_path=FIXTURES / "th_sv_test.dat",
         )
 
@@ -175,17 +276,36 @@ class LookupWordTests(unittest.TestCase):
     def test_reports_thesaurus_but_not_in_dictionary(self) -> None:
         in_dictionary, groups = swedish.lookup_word(
             "betydelsefull",
-            hunspell_path=FIXTURES / "sv_test.dic",
+            dictionary_path=FIXTURES / "sv_test.dict",
             thesaurus_path=FIXTURES / "th_sv_test.dat",
         )
 
         self.assertFalse(in_dictionary)
         self.assertIsNotNone(groups)
 
+    def test_checks_built_dictionary_not_hunspell_source(self) -> None:
+        # "viktiga" comes from SALDO, so only the built dictionary has it.
+        in_dictionary, _ = swedish.lookup_word(
+            "viktiga",
+            dictionary_path=FIXTURES / "sv_test.dict",
+            thesaurus_path=FIXTURES / "th_sv_test.dat",
+        )
+
+        self.assertTrue(in_dictionary)
+
+    def test_missing_dictionary_reports_not_in_dictionary(self) -> None:
+        in_dictionary, _ = swedish.lookup_word(
+            "arbete",
+            dictionary_path=FIXTURES / "missing.dict",
+            thesaurus_path=FIXTURES / "th_sv_test.dat",
+        )
+
+        self.assertFalse(in_dictionary)
+
     def test_reports_neither_for_unknown_word(self) -> None:
         in_dictionary, groups = swedish.lookup_word(
             "någotutanträff",
-            hunspell_path=FIXTURES / "sv_test.dic",
+            dictionary_path=FIXTURES / "sv_test.dict",
             thesaurus_path=FIXTURES / "th_sv_test.dat",
         )
 
@@ -244,11 +364,40 @@ class BuildDictionaryTests(unittest.TestCase):
         self._data_patch.start()
         self.addCleanup(self._data_patch.stop)
 
-    def _source_dir(self) -> Path:
-        return self._data / "completion-dictionary" / "sources" / "hunspell-sv"
+    def _source_dir(self, name: str = "hunspell-sv") -> Path:
+        return self._data / "completion-dictionary" / "sources" / name
+
+    def _seed(self, name: str, filename: str, fixture: str) -> None:
+        destination = self._source_dir(name) / filename
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((FIXTURES / fixture).read_bytes())
+
+    def test_build_downloads_thesaurus_too(self) -> None:
+        source = self._source_dir() / "sv_SE_expanded.dic"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("arbete\n", encoding="utf-8")
+        self._seed("mythes-sv", "th_sv_SE.dat", "th_sv_test.dat")
+        self._seed("saldo", "saldom.xml", "saldom_test.xml")
+
+        output_path = Path(self._temp.name) / "sv-hunspell.dict"
+        with patch(
+            "completion_dictionary.swedish._ensure_download",
+            side_effect=lambda url, destination: destination,
+        ) as download:
+            swedish.build_dictionary(output_path)
+
+        urls = [call.args[0] for call in download.call_args_list]
+        self.assertIn(swedish.MYTHES_URL, urls)
+        self.assertIn(swedish.SALDO_MORPHOLOGY_URL, urls)
+        self.assertTrue(swedish.lemma_index_path().exists())
 
     def test_build_writes_sorted_casefolded_forms(self) -> None:
-        # Pre-seed the cached source so no download is needed.
+        # Pre-seed the cached sources so no download is needed; an empty
+        # SALDO keeps the output to the Hunspell forms under test.
+        self._seed("mythes-sv", "th_sv_SE.dat", "th_sv_test.dat")
+        saldo = self._source_dir("saldo") / "saldom.xml"
+        saldo.parent.mkdir(parents=True, exist_ok=True)
+        saldo.write_text("<LexicalResource><Lexicon/></LexicalResource>")
         source = self._source_dir() / "sv_SE_expanded.dic"
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text(

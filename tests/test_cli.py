@@ -90,7 +90,9 @@ class CliTests(unittest.TestCase):
                 exit_code = cli.run_lookup(cli.PROFILES["swedish"], "betydelsefull")
 
         self.assertEqual(exit_code, 0)
-        mock.assert_called_once_with("betydelsefull")
+        mock.assert_called_once_with(
+            "betydelsefull", cli.PROFILES["swedish"].default_output
+        )
         printed = "".join(str(call) + "\n" for call in print_mock.call_args_list)
         self.assertIn("Profile: swedish", printed)
         self.assertIn("Word: betydelsefull", printed)
@@ -110,6 +112,43 @@ class CliTests(unittest.TestCase):
         printed = "".join(str(call) + "\n" for call in print_mock.call_args_list)
         self.assertIn("Thesaurus: no", printed)
         self.assertNotIn("Synonyms:", printed)
+
+    def test_synonym_groups_swedish_drops_query_and_empty_groups(self) -> None:
+        groups = (("Viktig", "väsentlig"), ("viktig",))
+        with patch.object(cli.swedish, "lookup_synonyms", return_value=groups):
+            result = cli.synonym_groups(cli.PROFILES["swedish"], "viktig")
+
+        self.assertEqual(
+            result, [{"words": ["väsentlig"], "pos": None, "gloss": None}]
+        )
+
+    def test_synonym_groups_swedish_unknown_word_is_empty(self) -> None:
+        with patch.object(cli.swedish, "lookup_synonyms", return_value=None):
+            self.assertEqual(cli.synonym_groups(cli.PROFILES["swedish"], "x"), [])
+
+    def test_synonym_groups_english_keeps_pos_and_gloss(self) -> None:
+        senses = [
+            cli.SenseSummary("bed", "n", ("bed", "bunk"), "i1", "furniture"),
+            cli.SenseSummary("bed", "v", ("bed",), "i2", "lone sense"),
+        ]
+        with patch.object(cli, "ensure_wordnet", return_value="primary"):
+            with patch.object(cli, "collect_senses", return_value=senses):
+                result = cli.synonym_groups(cli.PROFILES["english"], "bed")
+
+        self.assertEqual(
+            result, [{"words": ["bunk"], "pos": "noun", "gloss": "furniture"}]
+        )
+
+    def test_main_synonyms_prints_unescaped_json(self) -> None:
+        groups = [{"words": ["väsentlig"], "pos": None, "gloss": None}]
+        with patch.object(cli, "synonym_groups", return_value=groups):
+            with patch("builtins.print") as print_mock:
+                exit_code = cli.main(["synonyms", "--profile", "swedish", "viktig"])
+
+        self.assertEqual(exit_code, 0)
+        print_mock.assert_called_once_with(
+            '[{"words": ["väsentlig"], "pos": null, "gloss": null}]'
+        )
 
 
 if __name__ == "__main__":
