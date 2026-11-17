@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import codecs
 import http.client
 import shutil
 import xml.etree.ElementTree as ET
@@ -8,21 +7,19 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.request import urlopen
 
-from completion_dictionary.paths import data_root
+from completion_dictionary.paths import atomic_output, data_root
 
 #: Upstream Swedish Hunspell dictionary (yeager/hunspell-sv), fully expanded forms.
 SWEDISH_HUNSPELL_URL = (
     "https://raw.githubusercontent.com/yeager/hunspell-sv/main/"
     "sv_SE_expanded.dic"
 )
-SWEDISH_HUNSPELL_VERSION = "main"
 
 #: LibreOffice Swedish thesaurus (MyThes / Synlex).
 MYTHES_URL = (
     "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/"
     "sv_SE/th_sv_SE.dat"
 )
-MYTHES_VERSION = "master"
 
 #: SALDO morphology (Språkbanken): every inflected form with its base word.
 #: It adds forms the Hunspell list lacks, such as ``viktiga`` and ``husen``.
@@ -58,17 +55,19 @@ def _ensure_download(url: str, destination: Path, refresh: bool = False) -> Path
     if destination.exists() and not refresh:
         return destination
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = destination.with_suffix(destination.suffix + ".tmp")
     try:
-        with urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response, tmp_path.open(
-            "wb"
-        ) as tmp_file:
-            shutil.copyfileobj(response, tmp_file)
-    except (OSError, http.client.HTTPException) as exc:
-        tmp_path.unlink(missing_ok=True)
+        with atomic_output(destination) as tmp_path:
+            with urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response, tmp_path.open(
+                "wb"
+            ) as tmp_file:
+                shutil.copyfileobj(response, tmp_file)
+                expected_length = response.headers.get("Content-Length")
+                if expected_length is not None:
+                    missing = int(expected_length) - tmp_file.tell()
+                    if missing != 0:
+                        raise http.client.IncompleteRead(b"", missing)
+    except (OSError, http.client.HTTPException, ValueError) as exc:
         raise SystemExit(f"Could not download {url}: {exc}") from exc
-    tmp_path.replace(destination)
     return destination
 
 
@@ -124,11 +123,11 @@ def iter_saldo_forms(saldo_path: Path) -> Iterator[tuple[str, str]]:
 def write_lemma_index(pairs: Iterable[tuple[str, str]], output_path: Path) -> int:
     """Write sorted ``form<TAB>base word`` lines and return how many."""
     pairs = set(pairs)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        "".join(f"{form}\t{lemma}\n" for form, lemma in sorted(pairs)),
-        encoding="utf-8",
-    )
+    with atomic_output(output_path) as tmp_path:
+        tmp_path.write_text(
+            "".join(f"{form}\t{lemma}\n" for form, lemma in sorted(pairs)),
+            encoding="utf-8",
+        )
     return len(pairs)
 
 
@@ -186,9 +185,7 @@ def build_dictionary(output_path: Path, refresh: bool = False) -> int:
     headwords = set(parse_thesaurus(ensure_thesaurus_source(refresh)))
     index_pairs: set[tuple[str, str]] = set()
     for form, lemma in iter_saldo_forms(ensure_saldo_source(refresh)):
-        # Multiword expressions never match a single typed keyword.
-        if " " not in form:
-            words.add(form)
+        words.add(form)
         if lemma in headwords and form != lemma:
             index_pairs.add((form, lemma))
 
@@ -196,10 +193,14 @@ def build_dictionary(output_path: Path, refresh: bool = False) -> int:
     form_count = write_lemma_index(index_pairs, index_path)
     print(f"Wrote {form_count} inflected forms to {index_path}")
 
-    sorted_words = sorted(words, key=lambda word: (word.casefold(), word))
+    # Multiword expressions from either source never match a single keyword.
+    sorted_words = sorted(
+        (word for word in words if not any(char.isspace() for char in word)),
+        key=lambda word: (word.casefold(), word),
+    )
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(sorted_words) + "\n", encoding="utf-8")
+    with atomic_output(output_path) as tmp_path:
+        tmp_path.write_text("\n".join(sorted_words) + "\n", encoding="utf-8")
     print(f"Wrote {len(sorted_words)} word forms to {output_path}")
     return 0
 

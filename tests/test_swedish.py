@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from http.client import IncompleteRead
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from threading import Thread
 from unittest.mock import MagicMock, patch
 from urllib.error import URLError
 
@@ -66,6 +68,7 @@ class EnsureDownloadTests(unittest.TestCase):
         class FakeResponse:
             def __init__(self, body: bytes) -> None:
                 self._body = body
+                self.headers = {"Content-Length": str(len(body))}
 
             def __enter__(self) -> "FakeResponse":
                 return self
@@ -92,7 +95,7 @@ class EnsureDownloadTests(unittest.TestCase):
             swedish.SWEDISH_HUNSPELL_URL, timeout=swedish.DOWNLOAD_TIMEOUT
         )
         # Atomic write leaves no temporary file behind.
-        self.assertFalse(destination.with_suffix(destination.suffix + ".tmp").exists())
+        self.assertEqual(list(destination.parent.iterdir()), [destination])
 
     def test_skips_download_when_destination_already_exists(self) -> None:
         destination = self._source_dir("mythes-sv") / "th_sv_SE.dat"
@@ -111,6 +114,7 @@ class EnsureDownloadTests(unittest.TestCase):
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b"old")
         response = MagicMock()
+        response.__enter__.return_value.headers = {}
         response.__enter__.return_value.read.side_effect = [b"new", b""]
 
         with patch("completion_dictionary.swedish.urlopen", return_value=response):
@@ -144,7 +148,48 @@ class EnsureDownloadTests(unittest.TestCase):
 
         self.assertIn("Could not download", str(exc.exception.code))
         self.assertFalse(destination.exists())
-        self.assertFalse(destination.with_suffix(destination.suffix + ".tmp").exists())
+        self.assertEqual(list(destination.parent.iterdir()), [])
+
+    def test_http_download_checks_length_and_preserves_cache(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            content_length: int | None = None
+
+            def do_GET(self) -> None:
+                self.send_response(200)
+                if self.content_length is not None:
+                    self.send_header("Content-Length", str(self.content_length))
+                self.end_headers()
+                self.wfile.write(b"new")
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        with HTTPServer(("127.0.0.1", 0), Handler) as server:
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                url = f"http://127.0.0.1:{server.server_port}/source"
+                for length, cached in [(3, True), (None, True), (100, True), (100, False)]:
+                    with self.subTest(length=length, cached=cached):
+                        Handler.content_length = length
+                        destination = self._data / "source.dic"
+                        destination.unlink(missing_ok=True)
+                        if cached:
+                            destination.write_bytes(b"old")
+                        if length == 100:
+                            with self.assertRaisesRegex(SystemExit, "Could not download"):
+                                swedish._ensure_download(url, destination, refresh=True)
+                            if cached:
+                                self.assertEqual(destination.read_bytes(), b"old")
+                            else:
+                                self.assertFalse(destination.exists())
+                        else:
+                            swedish._ensure_download(url, destination, refresh=True)
+                            self.assertEqual(destination.read_bytes(), b"new")
+                        self.assertFalse(list(self._data.glob("*.tmp")))
+            finally:
+                server.shutdown()
+                thread.join()
 
     def test_dropped_connection_exits_cleanly(self) -> None:
         response = MagicMock()
@@ -157,7 +202,7 @@ class EnsureDownloadTests(unittest.TestCase):
         self.assertIn("Could not download", str(exc.exception.code))
         self.assertFalse(any(self._source_dir("saldo").iterdir()))
 
-    def test_exposes_pinned_source_constants(self) -> None:
+    def test_source_urls_name_expected_files(self) -> None:
         self.assertTrue(swedish.SWEDISH_HUNSPELL_URL.endswith("sv_SE_expanded.dic"))
         self.assertTrue(swedish.MYTHES_URL.endswith("th_sv_SE.dat"))
 
@@ -436,7 +481,7 @@ class BuildDictionaryTests(unittest.TestCase):
         source = self._source_dir() / "sv_SE_expanded.dic"
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text(
-            "4\narbetat\nBeta\nbeta\növerenskommelse\n",
+            "7\narbetat\nBeta\nbeta\növerenskommelse\nad hoc\nalla\tfall\nRed\u00a0Bull\n",
             encoding="utf-8",
         )
 

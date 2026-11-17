@@ -2,7 +2,28 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+
+
+@contextmanager
+def atomic_output(path: Path) -> Iterator[Path]:
+    """Replace a destination only after its temporary sibling is fully written."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+    ) as temporary:
+        temporary_path = Path(temporary.name)
+    try:
+        yield temporary_path
+        # Windows chmod can make a failed replacement's temporary file undeletable.
+        if os.name != "nt" and path.exists():
+            temporary_path.chmod(path.stat().st_mode & 0o777)
+        temporary_path.replace(path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def data_root() -> Path:

@@ -12,10 +12,9 @@ wn: Any = None
 wn_ili: Any = None
 
 from completion_dictionary import swedish
-from completion_dictionary.paths import data_root
+from completion_dictionary.paths import atomic_output, data_root
 
 
-CILI_SPEC = "cili:1.0"
 ENGLISH_WORDNET_SPEC = "oewn:2025+"
 POS_NAMES = {
     "n": "noun",
@@ -82,17 +81,6 @@ def require_wn() -> None:
         )
 
 
-def ensure_package(spec: str) -> None:
-    if spec == CILI_SPEC:
-        ili_record = wn_ili.get("i1")
-        if ili_record is None or ili_record.definition() is None:
-            wn.download(spec, progress_handler=None)
-        return
-
-    if not wn.lexicons(lexicon=spec):
-        wn.download(spec, progress_handler=None)
-
-
 def load_profile(name: str) -> Profile:
     try:
         return PROFILES[name]
@@ -103,9 +91,10 @@ def load_profile(name: str) -> Profile:
 def ensure_wordnet(download: bool = True) -> Any:
     """Return the English WordNet, or ``None`` if it is missing and ``download`` is false."""
     require_wn()
-    if not download and not wn.lexicons(lexicon=ENGLISH_WORDNET_SPEC):
-        return None
-    ensure_package(ENGLISH_WORDNET_SPEC)
+    if not wn.lexicons(lexicon=ENGLISH_WORDNET_SPEC):
+        if not download:
+            return None
+        wn.download(ENGLISH_WORDNET_SPEC, progress_handler=None)
     return wn.Wordnet(ENGLISH_WORDNET_SPEC, expand="")
 
 
@@ -123,18 +112,12 @@ def lookup_words(wordnet: Any, query: str) -> list[Any]:
     return candidates
 
 
-def resolve_gloss(synset: Any, fallback_wordnet: Any | None) -> str | None:
+def resolve_gloss(synset: Any) -> str | None:
     definition = synset.definition()
     if definition:
         return definition
     if not synset.ili:
         return None
-
-    if fallback_wordnet is not None:
-        for fallback_synset in fallback_wordnet.synsets(ili=synset.ili):
-            fallback_definition = fallback_synset.definition()
-            if fallback_definition:
-                return fallback_definition
 
     ili_record = wn_ili.get(synset.ili)
     if ili_record is None:
@@ -145,7 +128,6 @@ def resolve_gloss(synset: Any, fallback_wordnet: Any | None) -> str | None:
 def collect_senses(
     query: str,
     primary_wordnet: Any,
-    fallback_wordnet: Any | None,
 ) -> list[SenseSummary]:
     senses: list[SenseSummary] = []
     seen_sense_ids: set[str] = set()
@@ -162,7 +144,7 @@ def collect_senses(
                     pos=word.pos,
                     sibling_lemmas=sibling_lemmas,
                     ili_id=synset.ili,
-                    gloss=resolve_gloss(synset, fallback_wordnet),
+                    gloss=resolve_gloss(synset),
                 )
             )
     return senses
@@ -187,9 +169,9 @@ def build_dictionary(
         for word in primary_wordnet.words()
         if (lemma := word.lemma().strip()) and " " not in lemma
     }
-    actual_output.parent.mkdir(parents=True, exist_ok=True)
     sorted_lemmas = sorted(lemmas, key=lambda lemma: (lemma.casefold(), lemma))
-    actual_output.write_text("\n".join(sorted_lemmas) + "\n", encoding="utf-8")
+    with atomic_output(actual_output) as tmp_path:
+        tmp_path.write_text("\n".join(sorted_lemmas) + "\n", encoding="utf-8")
     print(f"Wrote {len(sorted_lemmas)} lemmas to {actual_output}")
     return 0
 
@@ -210,7 +192,7 @@ def run_lookup(profile: Profile, query: str) -> int:
         return 0
 
     primary_wordnet = ensure_wordnet()
-    senses = collect_senses(query, primary_wordnet, None)
+    senses = collect_senses(query, primary_wordnet)
     print(f"Profile: {profile.name}")
     print(f"Lemma: {query}")
     print(f"Matches: {len(senses)} sense(s)")
@@ -233,7 +215,7 @@ def render_doc(profile: Profile, query: str) -> str:
     primary_wordnet = ensure_wordnet(download=False)
     if primary_wordnet is None:
         return ""
-    senses = collect_senses(query, primary_wordnet, None)
+    senses = collect_senses(query, primary_wordnet)
     if not senses:
         return ""
 
@@ -271,7 +253,7 @@ def synonym_groups(profile: Profile, query: str) -> list[dict[str, Any]]:
                 "pos": format_pos(sense.pos),
                 "gloss": sense.gloss,
             }
-            for sense in collect_senses(query, primary_wordnet, None)
+            for sense in collect_senses(query, primary_wordnet)
         ]
 
     for group in groups:

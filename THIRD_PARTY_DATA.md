@@ -14,7 +14,7 @@ Used by the `swedish` profile to build the completion dictionary.
 |--------|-------|
 | Source | [yeager/hunspell-sv](https://github.com/yeager/hunspell-sv) |
 | File   | `sv_SE_expanded.dic` (fully expanded word forms) |
-| Version| `main` (pinned in `completion_dictionary/swedish.py`) |
+| Version| Tracks the `main` branch (not pinned) |
 | License| LGPL-3.0 |
 
 The dictionary builds on a number of upstream Swedish lexical resources,
@@ -32,7 +32,7 @@ Used by the `swedish` profile for synonym lookup (`Synonymer` output in
 |--------|-------|
 | Source | [LibreOffice/dictionaries](https://github.com/LibreOffice/dictionaries), `sv_SE/th_sv_SE.dat` |
 | Format | MyThes (`.dat`) thesaurus |
-| Version| `master` (pinned in `completion_dictionary/swedish.py`) |
+| Version| Tracks the `master` branch (not pinned) |
 | Author | Viggo Kann (KTH), Synlex project |
 | License| CC-BY |
 
@@ -53,7 +53,7 @@ directory.
 |--------|-------|
 | Source | [SALDO's morphology](https://sprakbanken.se/en/resources/saldom), Språkbanken Text, University of Gothenburg |
 | File   | `saldom.xml` (LMF lexicon, about 250 MB) |
-| Version| Release dated 2017-09-19 (URL pinned in `completion_dictionary/swedish.py`) |
+| Version| Downloads from an unversioned URL (not pinned) |
 | License| [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 
 Citation: Språkbanken Text. SALDO's morphology. https://doi.org/10.23695/agcm-ny22
