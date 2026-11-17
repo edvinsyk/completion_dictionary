@@ -1,0 +1,60 @@
+<LexicalResource dtdVersion="16">
+<Lexicon>
+<LexicalEntry>
+ <Lemma>
+  <FormRepresentation>
+   <feat att="writtenForm" val="flitig"/>
+   <feat att="partOfSpeech" val="av"/>
+  </FormRepresentation>
+ </Lemma>
+ <WordForm>
+  <feat att="writtenForm" val="flitig"/>
+  <feat att="msd" val="pos indef sg u nom"/>
+ </WordForm>
+ <WordForm>
+  <feat att="writtenForm" val="flitiga"/>
+  <feat att="msd" val="pos indef pl nom"/>
+ </WordForm>
+ <WordForm>
+  <feat att="writtenForm" val="flitiga"/>
+  <feat att="msd" val="pos def pl nom"/>
+ </WordForm>
+ <WordForm>
+  <feat att="writtenForm" val="flitigt"/>
+  <feat att="msd" val="pos indef sg n nom"/>
+ </WordForm>
+ <WordForm>
+  <feat att="writtenForm" val="flitig-"/>
+  <feat att="msd" val="c"/>
+ </WordForm>
+</LexicalEntry>
+<LexicalEntry>
+ <Lemma>
+  <FormRepresentation>
+   <feat att="writtenForm" val="hälsa"/>
+   <feat att="partOfSpeech" val="nn"/>
+  </FormRepresentation>
+ </Lemma>
+ <WordForm>
+  <feat att="writtenForm" val="hälsan"/>
+  <feat att="msd" val="sg def nom"/>
+ </WordForm>
+ <WordForm>
+  <feat att="writtenForm" val="hälsor"/>
+  <feat att="msd" val="sg indef nom 1:1-2"/>
+ </WordForm>
+</LexicalEntry>
+<LexicalEntry>
+ <Lemma>
+  <FormRepresentation>
+   <feat att="writtenForm" val="arbete"/>
+   <feat att="partOfSpeech" val="nn"/>
+  </FormRepresentation>
+ </Lemma>
+ <WordForm>
+  <feat att="writtenForm" val="arbetet"/>
+  <feat att="msd" val="sg def nom"/>
+ </WordForm>
+</LexicalEntry>
+</Lexicon>
+</LexicalResource>

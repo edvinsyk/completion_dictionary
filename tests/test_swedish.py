@@ -174,6 +174,45 @@ class LookupSynonymsTests(unittest.TestCase):
         )
 
 
+class LemmaIndexTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temp.cleanup)
+        self.index = Path(self._temp.name) / "sv-lemmas.tsv"
+        headwords = set(swedish.parse_thesaurus(FIXTURES / "th_sv_test.dat"))
+        self.count = swedish.build_lemma_index(
+            FIXTURES / "saldom_test.xml", headwords, self.index
+        )
+
+    def test_keeps_inflected_forms_of_headwords_only(self) -> None:
+        # Base forms, compound parts ("flitig-"), multiword pieces ("hälsor"),
+        # and words without a thesaurus entry ("arbetet") are left out.
+        self.assertEqual(
+            self.index.read_text(encoding="utf-8"),
+            "flitiga\tflitig\nflitigt\tflitig\nhälsan\thälsa\n",
+        )
+        self.assertEqual(self.count, 3)
+
+    def test_inflected_form_finds_base_word_synonyms(self) -> None:
+        groups = swedish.lookup_synonyms(
+            "Flitiga", FIXTURES / "th_sv_test.dat", self.index
+        )
+
+        self.assertEqual(groups, (("ivrig", "ambitiös"), ("arbetsam", "strävsam")))
+
+    def test_unknown_form_without_index_entry_is_none(self) -> None:
+        self.assertIsNone(
+            swedish.lookup_synonyms("arbetet", FIXTURES / "th_sv_test.dat", self.index)
+        )
+
+    def test_missing_index_is_skipped(self) -> None:
+        self.index.unlink()
+
+        self.assertIsNone(
+            swedish.lookup_synonyms("flitiga", FIXTURES / "th_sv_test.dat", self.index)
+        )
+
+
 class LookupWordTests(unittest.TestCase):
     def test_reports_completion_and_thesaurus(self) -> None:
         in_dictionary, groups = swedish.lookup_word(
@@ -270,10 +309,17 @@ class BuildDictionaryTests(unittest.TestCase):
     def _source_dir(self, name: str = "hunspell-sv") -> Path:
         return self._data / "completion-dictionary" / "sources" / name
 
+    def _seed(self, name: str, filename: str, fixture: str) -> None:
+        destination = self._source_dir(name) / filename
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((FIXTURES / fixture).read_bytes())
+
     def test_build_downloads_thesaurus_too(self) -> None:
         source = self._source_dir() / "sv_SE_expanded.dic"
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text("arbete\n", encoding="utf-8")
+        self._seed("mythes-sv", "th_sv_SE.dat", "th_sv_test.dat")
+        self._seed("saldo", "saldom.xml", "saldom_test.xml")
 
         output_path = Path(self._temp.name) / "sv-hunspell.dict"
         with patch(
@@ -284,12 +330,13 @@ class BuildDictionaryTests(unittest.TestCase):
 
         urls = [call.args[0] for call in download.call_args_list]
         self.assertIn(swedish.MYTHES_URL, urls)
+        self.assertIn(swedish.SALDO_MORPHOLOGY_URL, urls)
+        self.assertTrue(swedish.lemma_index_path().exists())
 
     def test_build_writes_sorted_casefolded_forms(self) -> None:
         # Pre-seed the cached sources so no download is needed.
-        thesaurus = self._source_dir("mythes-sv") / "th_sv_SE.dat"
-        thesaurus.parent.mkdir(parents=True, exist_ok=True)
-        thesaurus.write_bytes(b"UTF-8\n")
+        self._seed("mythes-sv", "th_sv_SE.dat", "th_sv_test.dat")
+        self._seed("saldo", "saldom.xml", "saldom_test.xml")
         source = self._source_dir() / "sv_SE_expanded.dic"
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text(

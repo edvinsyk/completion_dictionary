@@ -6,6 +6,7 @@ It builds newline-delimited dictionary files and prints documentation for single
 The current release supports two profiles, each backed by a different data source.
 
 - `swedish`: completion vocabulary from the [hunspell-sv](https://github.com/yeager/hunspell-sv) Swedish dictionary (including inflected forms), and synonyms from the Synlex / LibreOffice Swedish thesaurus.
+  The [SALDO](https://sprakbanken.se/en/resources/saldom) morphology links inflected forms to their base word, so `viktiga` gets the synonyms of `viktig`.
 - `english`: lemma completion and WordNet documentation from the [Open English WordNet](https://en-word.net/) through the [wn](https://github.com/goodmami/wn) Python package.
 
 Third-party data is downloaded at build time, not bundled in the package. See
@@ -82,6 +83,9 @@ This command will:
 - collect the completion vocabulary from the profile's source
 - deduplicate it exactly
 - sort it with `casefold()` for deterministic output
+
+For the `swedish` profile, the first build also downloads the SALDO morphology (about 250 MB) and takes about 15 seconds longer.
+The build writes a small form index, `sv-lemmas.tsv`, next to the dictionary.
 
 By default, the tool writes into a user data directory instead of the
 repo.
